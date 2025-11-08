@@ -1,0 +1,29 @@
+# Environment files
+.env
+.secrets
+secrets/
+
+# Node build artifacts
+node_modules/
+dist/
+build/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.envrc
+
+# Editor/OS
+desktop.ini
+.DS_Store
+*.swp
+
+# Coverage and logs
+.coverage
+htmlcov/
+logs/
+
+# Misc
+.vscode/
+.idea/

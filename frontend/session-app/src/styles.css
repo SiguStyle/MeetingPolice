@@ -1,0 +1,152 @@
+:root {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #0f172a;
+  background: #f5f6fb;
+}
+
+body {
+  margin: 0;
+  background: inherit;
+}
+
+.mp-session-layout {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+.mp-session-layout header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.panel {
+  background: #fff;
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.participant-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.participant {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.participant .avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #eef2ff;
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+}
+
+.participant .name {
+  margin: 0;
+  font-weight: 600;
+}
+
+.participant .role {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.participant .pill {
+  margin-left: auto;
+  color: #047857;
+  font-weight: 600;
+}
+
+.participant.speaking {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+}
+
+.metrics-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.metrics-table th,
+.metrics-table td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+}
+
+.metrics-table tbody tr:nth-child(even) {
+  background: #f8fafc;
+}
+
+.control-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.control-bar .controls {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.meeting-form {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.meeting-form input {
+  flex: 1;
+  border-radius: 999px;
+  border: 1px solid #cbd5f5;
+  padding: 0.6rem 1rem;
+}
+
+.error {
+  color: #b91c1c;
+}
+
+button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.65rem 1.5rem;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #e0e7ff;
+  color: #312e81;
+}
+
+button.danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #94a3b8;
+  margin-bottom: 0.25rem;
+}

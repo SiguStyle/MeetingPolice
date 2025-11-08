@@ -1,0 +1,19 @@
+from fastapi import APIRouter, WebSocket, HTTPException
+
+from .controller import SessionController
+
+router = APIRouter()
+controller = SessionController()
+
+
+@router.post("/meetings/{meeting_id}/join")
+def join_meeting(meeting_id: str):
+    try:
+        return controller.create_session_token(meeting_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.websocket("/ws/{meeting_id}")
+async def ws_proxy(websocket: WebSocket, meeting_id: str):
+    await controller.stream_transcripts(websocket, meeting_id)
