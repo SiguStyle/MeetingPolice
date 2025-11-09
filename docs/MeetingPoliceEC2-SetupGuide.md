@@ -1,4 +1,5 @@
-# ＜AWS環境＞　CloudFormationでテンプレートを使ってEC2インスタンスを構築する
+# ＜AWS環境＞　
+# CloudFormationでテンプレートを使ってEC2インスタンスを構築する
 
 > テンプレートはMeetingPolice用に最適化しています。汎用のものではないので、他用途の場合は要件に応じて修正が必要です。
 
@@ -14,21 +15,21 @@ EC2はLinuxをはじめとしたOSが入ったサーバ（=インスタンス）
 
 ## ☆テンプレートでは何をしているか？
 
-・東京リージョンにUbuntu Server 22.04 LTSのインスタンス（t3.small）を構築
-・セキュリティグループの設定（SSH, HTTP, HTTPS許可）と固定IP化
-・IAMロール（権限）の付与
-・基本パッケージのインストール
-・FastAPI + Nginx + ReactをHTTPS自己署名証明書つきで構築
-・2GBのスワップ領域追加
-・GitHubからMeetingPoliceのプロジェクトファイルをクローン
-・SSM接続時にubuntuユーザーに自動切り替え設定
+* 東京リージョンにUbuntu Server 22.04 LTSのインスタンス（t3.small）を構築
+* セキュリティグループの設定（SSH, HTTP, HTTPS許可）と固定IP化
+* IAMロール（権限）の付与
+* 基本パッケージのインストール
+* FastAPI + Nginx + ReactをHTTPS自己署名証明書つきで構築
+* 2GBのスワップ領域追加
+* GitHubからMeetingPoliceのプロジェクトファイルをクローン
+* SSM接続時にubuntuユーザーに自動切り替え設定
 
 ## ☆構築手順
 
 1.  AWSマネジメントコンソールで「EC2 ＞ キーペア」を開き、新規に「EC2-keypair」を作成します（名前以外はデフォルト）。
 2.  トップページの「CloudFormation」からスタック作成画面を開きます。
 3.  ステップ1：テンプレートの指定で「テンプレートファイルのアップロード」を選ぶ。
-　　「MeetingPoliceEC2-t3small.yaml」をアップロードして次へ。
+「MeetingPoliceEC2-t3small.yaml」をアップロードして次へ。
 4.  ステップ2：スタック名を「MeetingPoliceEC2」に設定して次へ。
 5.  ステップ3：一番下のチェックボックスを入れて次へ。
 6.  ステップ4：そのまま進み、送信します。
