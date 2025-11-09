@@ -1,17 +1,22 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  MeetingPolice HTTPS (self-signed) + GitHub pull 対応版
-  FastAPI + Nginx + React フロントエンド構成（t3.small版）
+  MeetingPolice HTTPS (self-signed) + GitHub pull ready
+  FastAPI + Nginx + React frontend stack (t3.small)
 
 Parameters:
   KeyPairName:
     Type: AWS::EC2::KeyPair::KeyName
-    Description: SSH接続用のキーペア名
+    Description: Key pair name for SSH access
     Default: EC2-keypair
   GitRepoURL:
     Type: String
-    Description: MeetingPolice GitHubリポジトリURL (例: https://github.com/yourname/MeetingPolice.git)
+    Description: |
+      MeetingPolice GitHub repository URL (e.g. https://github.com/yourname/MeetingPolice.git)
     Default: https://github.com/SiguStyle/MeetingPolice
+  UbuntuAmiId:
+    Type: AWS::EC2::Image::Id
+    Description: Ubuntu Server 22.04 LTS (Jammy) AMI ID (ap-northeast-1)
+    Default: ami-0244ef75e95122fd9
 
 Resources:
   MeetingPoliceSecurityGroup:
@@ -58,7 +63,7 @@ Resources:
       KeyName: !Ref KeyPairName
       IamInstanceProfile: !Ref MeetingPoliceInstanceProfile
       SecurityGroupIds: [!Ref MeetingPoliceSecurityGroup]
-      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]
+      ImageId: !Ref UbuntuAmiId
       Tags:
         - Key: Name
           Value: MeetingPolice-Server
@@ -68,36 +73,45 @@ Resources:
           set -eux
           PROJECT_ROOT="/home/ubuntu/MeetingPolice"
 
-          # ---- 基本セットアップ ----
+          # ---- Basic setup ----
           sudo apt update -y
           sudo apt install -y git nginx python3 python3-venv python3-pip nodejs npm curl openssl snapd
           sudo snap install amazon-ssm-agent --classic
           sudo systemctl enable --now snap.amazon-ssm-agent.amazon-ssm-agent.service
 
-          # ---- swap領域追加（2GB）----
+          # ---- Add 2GB swap ----
           sudo fallocate -l 2G /swapfile
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
           echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
-          # ---- MeetingPoliceリポジトリ取得 ----
-          git clone ${GitRepoURL} ${PROJECT_ROOT} || (cd ${PROJECT_ROOT} && git pull)
-          cd ${PROJECT_ROOT}
+          # ---- Clone MeetingPolice repository ----
+          git clone ${GitRepoURL} $PROJECT_ROOT || (cd $PROJECT_ROOT && git pull)
+          cd $PROJECT_ROOT
 
-          # ---- Python仮想環境 ----
+          # ---- Auto switch to ubuntu user when SSM login ----
+          sudo tee -a /home/ssm-user/.bashrc > /dev/null <<'EOF'
+          if [ -z "$MEETINGPOLICE_SSM_SWITCHED" ]; then
+              export MEETINGPOLICE_SSM_SWITCHED=1
+              exec sudo -iu ubuntu bash -lc 'cd /home/ubuntu/MeetingPolice && exec bash'
+          fi
+          EOF
+          sudo chown ssm-user:ssm-user /home/ssm-user/.bashrc
+
+          # ---- Python virtual environment ----
           python3 -m venv venv
           source venv/bin/activate
           pip install fastapi uvicorn[standard]
 
-          # ---- SSL自己署名証明書生成 ----
+          # ---- Generate self-signed SSL certificate ----
           sudo mkdir -p /etc/ssl/meetingpolice
           sudo openssl req -x509 -nodes -days 825 -newkey rsa:2048 \
             -subj "/C=JP/ST=Tokyo/L=Tokyo/O=MeetingPolice/CN=localhost" \
             -keyout /etc/ssl/meetingpolice/server.key \
             -out /etc/ssl/meetingpolice/server.crt
 
-          # ---- Nginx設定 ----
+          # ---- Nginx configuration ----
           sudo tee /etc/nginx/sites-available/meetingpolice > /dev/null <<'EOF'
           server {
               listen 80;
@@ -140,7 +154,7 @@ Resources:
           sudo ln -s /etc/nginx/sites-available/meetingpolice /etc/nginx/sites-enabled/
           sudo systemctl restart nginx
 
-          # ---- FastAPI永続化 ----
+          # ---- Persist FastAPI with systemd ----
           cat << 'EOF' | sudo tee /etc/systemd/system/meetingpolice-backend.service
           [Unit]
           Description=MeetingPolice FastAPI backend
@@ -161,7 +175,7 @@ Resources:
           sudo systemctl enable meetingpolice-backend
           sudo systemctl start meetingpolice-backend
 
-          echo "✅ MeetingPolice (t3.small) setup complete."
+          echo "MeetingPolice (t3.small) setup complete."
     Metadata:
       Comment: EC2 sets up HTTPS FastAPI + Nginx from GitHub (t3.small)
 
@@ -169,12 +183,3 @@ Resources:
     Type: AWS::EC2::EIP
     Properties:
       InstanceId: !Ref MeetingPoliceEC2
-
-Mappings:
-  RegionMap:
-    ap-northeast-1:
-      AMI: ami-0e44a45f1d4860cd3
-    us-east-1:
-      AMI: ami-0c7217cdde317cfec
-    us-west-2:
-      AMI: ami-01f14919ba412de34
