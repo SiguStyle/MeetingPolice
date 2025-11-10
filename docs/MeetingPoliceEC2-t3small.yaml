@@ -89,23 +89,31 @@ Resources:
           sudo swapon /swapfile
           echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
-          # ---- Clone MeetingPolice repository ----
-          git clone ${GitRepoURL} $PROJECT_ROOT || (cd $PROJECT_ROOT && git pull)
+          # ---- Clone MeetingPolice repository as ubuntu ----
+          sudo -u ubuntu git clone ${GitRepoURL} $PROJECT_ROOT || \
+            (cd $PROJECT_ROOT && sudo -u ubuntu git pull)
+          sudo chown -R ubuntu:ubuntu $PROJECT_ROOT
           cd $PROJECT_ROOT
 
-          # ---- Auto switch to ubuntu user when SSM login ----
-          sudo tee -a /home/ssm-user/.bashrc > /dev/null <<'EOF'
-          if [ -z "$MEETINGPOLICE_SSM_SWITCHED" ]; then
-              export MEETINGPOLICE_SSM_SWITCHED=1
-              exec sudo -iu ubuntu bash -lc 'cd /home/ubuntu/MeetingPolice && exec bash'
+          # ---- Backend: Python virtual environment & dependencies ----
+          cd $PROJECT_ROOT/backend
+          python3 -m venv .venv
+          source .venv/bin/activate
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            pip install fastapi uvicorn[standard]
           fi
-          EOF
-          sudo chown ssm-user:ssm-user /home/ssm-user/.bashrc
 
-          # ---- Python virtual environment ----
-          python3 -m venv venv
-          source venv/bin/activate
-          pip install fastapi uvicorn[standard]
+          # ---- Frontend: build session-app ----
+          cd $PROJECT_ROOT/frontend/session-app
+          npm install
+          npm run build
+
+          # ---- Frontend: build admin-app ----
+          cd $PROJECT_ROOT/frontend/admin-app
+          npm install
+          npm run build
 
           # ---- Generate self-signed SSL certificate ----
           sudo mkdir -p /etc/ssl/meetingpolice
@@ -154,6 +162,7 @@ Resources:
           }
           EOF
 
+          sudo rm -f /etc/nginx/sites-enabled/default || true
           sudo ln -s /etc/nginx/sites-available/meetingpolice /etc/nginx/sites-enabled/
           sudo systemctl restart nginx
 
