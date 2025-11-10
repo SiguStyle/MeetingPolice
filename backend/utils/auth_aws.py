@@ -8,7 +8,7 @@ from config import get_settings
 def get_session():
     settings = get_settings()
     session_kwargs = {
-        \"region_name\": settings.aws_region,
+        "region_name": settings.aws_region,
     }
     if settings.aws_access_key_id and settings.aws_secret_access_key:
         session_kwargs.update(
