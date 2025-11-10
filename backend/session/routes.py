@@ -11,7 +11,9 @@ def join_meeting(meeting_id: str):
     try:
         return controller.create_session_token(meeting_id)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=404, detail="入力されたIDのミーティングは開催されていません"
+        ) from exc
 
 
 @router.websocket("/ws/{meeting_id}")
