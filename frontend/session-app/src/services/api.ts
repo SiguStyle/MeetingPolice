@@ -2,6 +2,10 @@ import type { MeetingSession } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api';
 
+const fallbackMessages: Record<number, string> = {
+  404: '入力されたIDのミーティングは開催されていません',
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
@@ -28,6 +32,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (!message) {
       const text = await response.text();
       message = text || `${response.status} ${response.statusText || 'Error'}`;
+    }
+    if (response.status in fallbackMessages) {
+      const fallback = fallbackMessages[response.status];
+      if (!message || /not\s+found/i.test(message)) {
+        message = fallback;
+      }
     }
     throw new Error(message);
   }
