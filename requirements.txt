@@ -7,3 +7,4 @@ PyJWT
 cryptography
 pytest
 pytest-asyncio
+pydantic-settings
