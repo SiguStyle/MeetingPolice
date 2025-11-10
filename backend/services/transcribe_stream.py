@@ -21,7 +21,8 @@ class _AudioStream:
 class TranscribeStream:
     def __init__(self, client: Any | None = None):
         session = get_session()
-        self.client = client or session.client("transcribe-streaming", region_name=get_settings().aws_region)
+        # `transcribe-streaming` is not a standalone boto3 service; streaming APIs live under the `transcribe` client.
+        self.client = client or session.client("transcribe", region_name=get_settings().aws_region)
 
     async def start(self, audio_stream: Iterable[bytes] | None = None) -> str:
         chunks = audio_stream or self._silence_chunks()
