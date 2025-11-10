@@ -22,21 +22,28 @@ export function MeetingForm({ onCreated }: Props) {
 
   return (
     <section className="panel">
-      <h2>Schedule a meeting</h2>
-      <p className="label">タイトル</p>
+      <div className="panel-header">
+        <div>
+          <p className="eyebrow">ステップ 1</p>
+          <h2>新しいセッションを作成</h2>
+        </div>
+        <span className="pill scheduled">準備中</span>
+      </div>
+      <p className="label">ミーティングタイトル</p>
       <form onSubmit={handleSubmit} className="meeting-form">
         <input
           type="text"
-          placeholder="Team sync"
+          placeholder="例）月次レビュー"
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           disabled={loading}
         />
         <button type="submit" disabled={loading}>
-          {loading ? 'Saving…' : 'Create'}
+          {loading ? '作成中…' : 'ミーティングを作成'}
         </button>
       </form>
       {error && <p className="error">{error}</p>}
+      <p className="help-text">ボタンを押すと数秒後に Meeting ID が自動採番されます。</p>
     </section>
   );
 }
