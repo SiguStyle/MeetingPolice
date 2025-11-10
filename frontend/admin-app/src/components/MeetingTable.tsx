@@ -7,13 +7,29 @@ type Props = {
 };
 
 export function MeetingTable({ meetings, onSelect }: Props) {
+  if (meetings.length === 0) {
+    return (
+      <section className="panel empty-state">
+        <h2>まだミーティングがありません</h2>
+        <p>左のフォームからミーティングを作成すると、ここに共有用の Meeting ID が並びます。</p>
+        <ul>
+          <li>作成後すぐにステータスが <strong>scheduled</strong> になります。</li>
+          <li>参加者には Session ページで ID を入力してもらいます。</li>
+        </ul>
+      </section>
+    );
+  }
+
   return (
     <section className="panel">
       <div className="panel-header">
-        <h2>Meetings</h2>
-        <span>{meetings.length} total</span>
+        <div>
+          <p className="eyebrow">ステップ 2</p>
+          <h2>共有用ミーティング一覧</h2>
+        </div>
+        <span>{meetings.length} 件</span>
       </div>
-      <p className="label">参加者共有用 Meeting ID</p>
+      <p className="label">参加者に伝える Meeting ID</p>
       <table className="table">
         <thead>
           <tr>
@@ -36,6 +52,7 @@ export function MeetingTable({ meetings, onSelect }: Props) {
           ))}
         </tbody>
       </table>
+      <p className="help-text">行をクリックすると右側で詳細・共有メモを確認できます。</p>
     </section>
   );
 }

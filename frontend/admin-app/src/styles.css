@@ -10,9 +10,75 @@ body {
 }
 
 .page {
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 2rem 1.5rem 4rem;
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+.hero {
+  display: flex;
+  gap: 2rem;
+  align-items: center;
+  margin-bottom: 2rem;
+  background: linear-gradient(135deg, #eef2ff, #dbeafe);
+  border-radius: 24px;
+  padding: 2rem;
+  box-shadow: 0 30px 60px rgba(15, 23, 42, 0.15);
+}
+
+.hero-content {
+  flex: 2;
+}
+
+.hero-subtitle {
+  margin-top: 0.5rem;
+  color: #334155;
+}
+
+.hero-card {
+  flex: 1;
+  background: #fff;
+  border-radius: 18px;
+  padding: 1.5rem;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hero-id {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.step-card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.step-card span {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: #312e81;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 0.85rem;
 }
 
 .grid {
@@ -29,11 +95,24 @@ body {
   margin-bottom: 1rem;
 }
 
+.empty-state ul {
+  padding-left: 1.25rem;
+  color: #475569;
+}
+
 .panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.75rem;
+}
+
+.eyebrow {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: #6366f1;
+  margin: 0;
 }
 
 .table {
@@ -74,11 +153,18 @@ button {
   background: #312e81;
   color: #fff;
   cursor: pointer;
+  font-weight: 600;
 }
 
 button:disabled {
   opacity: 0.6;
   cursor: progress;
+}
+
+.ghost {
+  background: transparent;
+  color: #312e81;
+  border: 1px solid rgba(49, 46, 129, 0.2);
 }
 
 .pill {
@@ -113,4 +199,38 @@ button:disabled {
 
 .error {
   color: #b91c1c;
+}
+
+.help-text {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin-top: 0.35rem;
+}
+
+.id-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.id-row code {
+  background: #0f172a;
+  color: #fff;
+  padding: 0.2rem 0.65rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+
+.summary-tip {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border-radius: 12px;
+  background: #f1f5f9;
+  font-size: 0.9rem;
+}
+
+.summary-tip ol {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+  color: #475569;
 }

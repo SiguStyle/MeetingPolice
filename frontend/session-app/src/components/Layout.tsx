@@ -5,7 +5,7 @@ export function Layout({ children }: PropsWithChildren) {
     <div className="mp-session-layout">
       <header>
         <h1>MeetingPolice Session</h1>
-        <p>Live insights for active participants</p>
+        <p>参加者はここで Meeting ID を入力し、音声解析の結果をリアルタイムに確認します。</p>
       </header>
       <main>{children}</main>
     </div>

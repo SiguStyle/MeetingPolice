@@ -5,6 +5,8 @@ import { joinMeeting } from '../services/api';
 export function useMeetingSession() {
   const [session, setSession] = useState<MeetingSession | null>(null);
   const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
+  const [handRaised, setHandRaised] = useState(false);
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -28,9 +30,13 @@ export function useMeetingSession() {
     setSession(null);
     setStatus('idle');
     setIsMuted(false);
+    setIsVideoOff(false);
+    setHandRaised(false);
   };
 
   const toggleMute = () => setIsMuted((prev) => !prev);
+  const toggleVideo = () => setIsVideoOff((prev) => !prev);
+  const toggleHand = () => setHandRaised((prev) => !prev);
 
   const updateParticipantSpeaking = (id: string, isSpeaking: boolean) => {
     setSession((prev) => {
@@ -45,11 +51,15 @@ export function useMeetingSession() {
   return {
     session,
     isMuted,
+    isVideoOff,
+    handRaised,
     status,
     error,
     joinMeeting: connect,
     leaveMeeting: leave,
     toggleMute,
+    toggleVideo,
+    toggleHand,
     updateParticipantSpeaking,
   };
 }
