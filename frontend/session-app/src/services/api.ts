@@ -3,17 +3,36 @@ import type { MeetingSession } from '../types';
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
     ...init,
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `API ${res.status}`);
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type') ?? '';
+    let message: string | undefined;
+    if (contentType.includes('application/json')) {
+      try {
+        const body = await response.json();
+        if (typeof body?.detail === 'string') {
+          message = body.detail;
+        } else if (typeof body?.message === 'string') {
+          message = body.message;
+        } else {
+          message = JSON.stringify(body);
+        }
+      } catch {
+        /* fall back to text below */
+      }
+    }
+    if (!message) {
+      const text = await response.text();
+      message = text || `${response.status} ${response.statusText || 'Error'}`;
+    }
+    throw new Error(message);
   }
 
-  return res.json() as Promise<T>;
+  return (await response.json()) as T;
 }
 
 export async function joinMeeting(meetingId: string): Promise<MeetingSession> {
