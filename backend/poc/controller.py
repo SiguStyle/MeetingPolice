@@ -7,6 +7,7 @@ import json
 import time
 import uuid
 import wave
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,7 @@ class POCController:
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.jobs: dict[str, PocJob] = {}
         self.settings = get_settings()
+        self.logger = logging.getLogger(__name__)
 
     async def start_transcription(self, agenda_text: str, audio_filename: str, audio_bytes: bytes) -> str:
         job_id = uuid.uuid4().hex[:12]
@@ -99,7 +101,7 @@ class POCController:
             loop = asyncio.get_running_loop()
             await asyncio.to_thread(self._run_transcribe_stream, job, pcm_bytes, sample_rate, loop)
         except Exception:
-            # Fallback to mock data if AWS 経由でエラーになった場合
+            self.logger.exception("Transcribe streaming failed for job %s, fallback to mock data", job.job_id)
             job.transcripts.clear()
             await self._simulate_stream(job)
 
@@ -186,6 +188,12 @@ class POCController:
 
         success = False
         try:
+            self.logger.info(
+                "Starting Transcribe stream job_id=%s sample_rate=%s chunk_bytes=%s",
+                job.job_id,
+                sample_rate,
+                chunk_bytes,
+            )
             response = client.start_stream_transcription(
                 LanguageCode="ja-JP",
                 MediaEncoding="pcm",
@@ -218,6 +226,7 @@ class POCController:
             if success:
                 job.status = "completed"
                 asyncio.run_coroutine_threadsafe(job.queue.put({"type": "complete"}), loop)
+                self.logger.info("Transcribe stream completed job_id=%s total_segments=%s", job.job_id, len(job.transcripts))
 
     def _chunk_pcm(self, pcm_bytes: bytes, chunk_size: int):
         for idx in range(0, len(pcm_bytes), chunk_size):
