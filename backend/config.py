@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     api_debug: bool = True
     cors_origins: List[AnyHttpUrl] | List[str] = ["http://localhost:5173", "http://localhost:5174"]
 
-    aws_region: str = "us-east-1"
+    aws_region: str = "ap-northeast-1"
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
     s3_bucket_name: str = "meeting-police-dev"
