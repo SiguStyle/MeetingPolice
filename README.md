@@ -39,6 +39,12 @@ MeetingPolice は、会議参加者にリアルタイムの音声解析結果を
 
 > **補足**: `docs/MeetingPoliceEC2-t3small.yaml` のユーザーデータでも Node.js 20 の導入・バックエンド依存インストール・2 つのフロントビルドまでを自動化しているため、CloudFormation で t3.small を立てるだけで同じ手順が再現されます。
 
+### PoC ページ（/poc）
+
+- `session-app` には `/poc` ルートを追加しており、アジェンダファイルと TTS 音声をアップロードして擬似 Transcribe Streaming を体験できます。
+- `backend/poc/` 配下の API は `job_id` 単位でファイルを保存し、`ws://.../api/poc/ws/{job_id}` からリアルタイムに文字起こしを返します。
+- 文字起こし完了後は `POST /api/poc/jobs/{job_id}/analyze` を呼ぶと Bedrock (summarize) / Comprehend (sentiment) を組み合わせた例が実行されます。詳細は `docs/POC_ANALYSIS.md` を参照してください。
+
 ### 代表的な利用フロー
 
 1. 管理者は `admin-app` からミーティングを作成し、表示された Meeting ID を参加者に共有します。

@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import get_settings
 from session.routes import router as session_router
 from admin.routes import router as admin_router
+from poc import router as poc_router
 
 settings = get_settings()
 
@@ -18,6 +19,7 @@ app.add_middleware(
 
 app.include_router(session_router, prefix="/api/session", tags=["session"])
 app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
+app.include_router(poc_router, prefix="/api/poc", tags=["poc"])
 
 
 @app.get("/health")

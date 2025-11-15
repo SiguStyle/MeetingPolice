@@ -1,11 +1,20 @@
 import { PropsWithChildren } from 'react';
 
-export function Layout({ children }: PropsWithChildren) {
+type Props = PropsWithChildren<{
+  title?: string;
+  subtitle?: string;
+}>;
+
+export function Layout({
+  children,
+  title = 'MeetingPolice Session',
+  subtitle = '参加者はここで Meeting ID を入力し、音声解析の結果をリアルタイムに確認します。',
+}: Props) {
   return (
     <div className="mp-session-layout">
       <header>
-        <h1>MeetingPolice Session</h1>
-        <p>参加者はここで Meeting ID を入力し、音声解析の結果をリアルタイムに確認します。</p>
+        <h1>{title}</h1>
+        <p>{subtitle}</p>
       </header>
       <main>{children}</main>
     </div>

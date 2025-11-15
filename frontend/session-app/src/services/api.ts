@@ -1,4 +1,4 @@
-import type { MeetingSession } from '../types';
+import type { MeetingSession, PocAnalysisResult, PocJobDetail } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api';
 
@@ -6,10 +6,13 @@ const fallbackMessages: Record<number, string> = {
   404: '入力されたIDのミーティングは開催されていません',
 };
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, addJsonHeader = true): Promise<T> {
+  const headers = addJsonHeader
+    ? { 'Content-Type': 'application/json', ...(init?.headers ?? {}) }
+    : init?.headers;
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
     ...init,
+    headers,
   });
 
   if (!response.ok) {
@@ -65,4 +68,16 @@ export async function joinMeeting(meetingId: string): Promise<MeetingSession> {
       { id: 'cohost', name: 'Co-host', role: 'guest', isSpeaking: true },
     ],
   };
+}
+
+export async function startPocRun(formData: FormData): Promise<{ job_id: string }> {
+  return request<{ job_id: string }>('/poc/start', { method: 'POST', body: formData }, false);
+}
+
+export async function fetchPocJob(jobId: string): Promise<PocJobDetail> {
+  return request<PocJobDetail>(`/poc/jobs/${jobId}`);
+}
+
+export async function analyzePocJob(jobId: string): Promise<PocAnalysisResult> {
+  return request<PocAnalysisResult>(`/poc/jobs/${jobId}/analyze`, { method: 'POST' });
 }

@@ -1,0 +1,200 @@
+import { FormEvent, useEffect, useRef, useState } from 'react';
+import { Layout } from '../components/Layout';
+import type { PocAnalysisResult, PocTranscript } from '../types';
+import { analyzePocJob, fetchPocJob, startPocRun } from '../services/api';
+
+const buildWsUrl = (path: string) => {
+  const apiBase = import.meta.env.VITE_API_BASE ?? '/api';
+  if (apiBase.startsWith('http')) {
+    const url = new URL(apiBase);
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    const basePath = url.pathname.endsWith('/') ? url.pathname.slice(0, -1) : url.pathname;
+    return `${url.origin}${basePath}${path}`;
+  }
+  const origin = window.location.origin.replace(/^http/, 'ws');
+  const base = apiBase.endsWith('/') ? apiBase.slice(0, -1) : apiBase;
+  return `${origin}${base}${path}`;
+};
+
+export function PocPage() {
+  const [agendaFile, setAgendaFile] = useState<File | null>(null);
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [transcripts, setTranscripts] = useState<PocTranscript[]>([]);
+  const [status, setStatus] = useState<'idle' | 'streaming' | 'complete'>('idle');
+  const [message, setMessage] = useState<string | null>(null);
+  const [analysis, setAnalysis] = useState<PocAnalysisResult | null>(null);
+  const [jobAgenda, setJobAgenda] = useState<string>('');
+  const wsRef = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const fetchJob = async () => {
+      if (status !== 'complete' || !jobId) return;
+      try {
+        const detail = await fetchPocJob(jobId);
+        setJobAgenda(detail.agenda_text);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchJob();
+  }, [jobId, status]);
+
+  const handleStart = async (event: FormEvent) => {
+    event.preventDefault();
+    setMessage(null);
+    setAnalysis(null);
+    setJobAgenda('');
+    if (!audioFile) {
+      setMessage('音声ファイルを選択してください。');
+      return;
+    }
+    const formData = new FormData();
+    if (agendaFile) {
+      formData.append('agenda', agendaFile);
+    }
+    formData.append('audio', audioFile);
+    try {
+      const response = await startPocRun(formData);
+      setJobId(response.job_id);
+      setTranscripts([]);
+      setStatus('streaming');
+      connectWebSocket(response.job_id);
+    } catch (err) {
+      const text = err instanceof Error ? err.message : 'アップロードに失敗しました';
+      setMessage(text);
+    }
+  };
+
+  const connectWebSocket = (id: string) => {
+    if (wsRef.current) {
+      wsRef.current.close();
+    }
+    const ws = new WebSocket(buildWsUrl(`/poc/ws/${id}`));
+    wsRef.current = ws;
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'transcript') {
+        setTranscripts((prev) => [...prev, data.payload as PocTranscript]);
+      } else if (data.type === 'complete') {
+        setStatus('complete');
+        setMessage('文字起こしが完了しました。');
+        ws.close();
+      } else if (data.type === 'error') {
+        setMessage(data.message);
+      }
+    };
+    ws.onerror = () => setMessage('WebSocket への接続に失敗しました。');
+    ws.onclose = () => {
+      wsRef.current = null;
+    };
+  };
+
+  const runAnalysis = async () => {
+    if (!jobId) return;
+    try {
+      const result = await analyzePocJob(jobId);
+      setAnalysis(result);
+    } catch (err) {
+      const text = err instanceof Error ? err.message : '分析 API の呼び出しに失敗しました';
+      setMessage(text);
+    }
+  };
+
+  return (
+    <Layout title="MeetingPolice PoC" subtitle="アジェンダと音声をアップロードし、リアルタイム文字起こしを確認できます。">
+      <section className="panel poc-upload">
+        <h2>PoC: アジェンダ &amp; TTS 音声のアップロード</h2>
+        <p>音声は Transcribe Streaming (デモ版) で処理され、結果が右のパネルにリアルタイムで届きます。</p>
+        <form className="poc-form" onSubmit={handleStart}>
+          <label className="upload-field">
+            <span>アジェンダファイル（任意）</span>
+            <input type="file" accept=".txt,.md,.doc,.docx,.pdf" onChange={(event) => setAgendaFile(event.target.files?.[0] ?? null)} />
+            {agendaFile && <small>{agendaFile.name}</small>}
+          </label>
+          <label className="upload-field">
+            <span>音声ファイル（必須）</span>
+            <input type="file" accept="audio/*" onChange={(event) => setAudioFile(event.target.files?.[0] ?? null)} required />
+            {audioFile && <small>{audioFile.name}</small>}
+          </label>
+          <button type="submit" disabled={status === 'streaming'}>
+            {status === 'streaming' ? '文字起こし中…' : '文字起こしを開始'}
+          </button>
+        </form>
+        {message && <p className="info-text">{message}</p>}
+        {jobId && (
+          <div className="job-meta">
+            <p className="label">Job ID</p>
+            <code>{jobId}</code>
+            <p className="label">ステータス</p>
+            <span className={`pill ${status}`}>{status}</span>
+          </div>
+        )}
+      </section>
+
+      <section className="panel transcript-panel">
+        <div className="panel-header">
+          <div>
+            <p className="label">リアルタイム文字起こし</p>
+            <h2>{transcripts.length} 行</h2>
+          </div>
+          {status === 'complete' && (
+            <button type="button" className="ghost" onClick={runAnalysis}>
+              Bedrock / Comprehend 連携を見る
+            </button>
+          )}
+        </div>
+        <div className="transcript-feed">
+          {transcripts.map((item) => (
+            <article key={item.timestamp + item.index} className="transcript-item">
+              <header>
+                <strong>{item.speaker}</strong>
+                <span>{item.timestamp}</span>
+              </header>
+              <p>{item.text}</p>
+            </article>
+          ))}
+          {transcripts.length === 0 && <p className="faded">アップロード後に文字起こしが表示されます。</p>}
+        </div>
+      </section>
+
+      <section className="panel analysis-panel">
+        <h2>Bedrock / Comprehend への渡し方</h2>
+        <ol>
+          <li>`GET /api/poc/jobs/&#123;job_id&#125;` を呼び出し、アジェンダ文本と transcript 配列を取得します。</li>
+          <li>`POST /api/poc/jobs/&#123;job_id&#125;/analyze` のコードを参考に、Bedrock へは transcript の結合テキストを、Comprehend へは議題ごとのサマリを送ります。</li>
+          <li>分析結果は `/docs/POC_ANALYSIS.md` に記載のフローでレポートへ反映できます。</li>
+        </ol>
+        {jobAgenda && (
+          <div className="agenda-preview">
+            <p className="label">このジョブのアジェンダ抜粋</p>
+            <pre>{jobAgenda || '（未指定）'}</pre>
+          </div>
+        )}
+        {analysis && (
+          <div className="analysis-result">
+            <h3>デモ分析結果</h3>
+            <p className="label">Bedrock 要約</p>
+            <p>{analysis.summary.summary}</p>
+            <p className="label">Comprehend Sentiment</p>
+            <pre>{JSON.stringify(analysis.sentiment, null, 2)}</pre>
+            <p className="label">ガイダンス</p>
+            <ul>
+              {analysis.guidance.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+    </Layout>
+  );
+}
