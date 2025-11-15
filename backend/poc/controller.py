@@ -176,7 +176,8 @@ class POCController:
 
     def _run_transcribe_stream(self, job: PocJob, pcm_bytes: bytes, sample_rate: int, loop: asyncio.AbstractEventLoop) -> None:
         session = get_session()
-        client = session.client("transcribe", region_name=self.settings.aws_region)
+        # Need the dedicated streaming client for start_stream_transcription
+        client = session.client("transcribe-streaming", region_name=self.settings.aws_region)
         chunk_ms = 50
         chunk_bytes = max(1, int(sample_rate * 2 * chunk_ms / 1000))
 
