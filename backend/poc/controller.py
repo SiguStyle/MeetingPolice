@@ -33,6 +33,7 @@ class PocJob:
     speaker_labels: dict[str, str] = field(default_factory=dict)
     next_speaker_index: int = 1
     current_entry: dict[str, Any] | None = None
+    processed_result_ids: set[str] = field(default_factory=set)
 
 
 class POCController:
@@ -221,16 +222,25 @@ class POCController:
                 if not transcript:
                     continue
                 for result in getattr(transcript, "results", []) or []:
+                    result_id = getattr(result, "result_id", None)
+                    is_partial = getattr(result, "is_partial", False)
+                    if not is_partial and result_id and result_id in job.processed_result_ids:
+                        continue
                     alternatives = getattr(result, "alternatives", []) or []
                     if not alternatives:
                         continue
                     alternative = alternatives[0]
-                    text = (getattr(alternative, "transcript", "") or "").strip()
-                    if not text:
+                    segments = self._segments_from_alternative(job, alternative)
+                    if not segments:
                         continue
-                    speaker_label = self._speaker_from_alternative(job, alternative)
-                    is_final = not getattr(result, "is_partial", False)
-                    await self._handle_segment(job, speaker_label, text, is_final)
+                    for idx, (speaker_label, text) in enumerate(segments):
+                        if not text:
+                            continue
+                        is_last = idx == len(segments) - 1
+                        is_final_segment = not is_partial or not is_last
+                        await self._handle_segment(job, speaker_label, text, is_final_segment)
+                    if not is_partial and result_id:
+                        job.processed_result_ids.add(result_id)
 
         success = False
         try:
@@ -255,23 +265,61 @@ class POCController:
             job.next_speaker_index += 1
         return job.speaker_labels[key]
 
-    def _speaker_from_alternative(self, job: PocJob, alternative: Any) -> str:
-        raw_label = None
+    def _segments_from_alternative(self, job: PocJob, alternative: Any) -> list[tuple[str, str]]:
+        segments: list[tuple[str, str]] = []
+        buffer: list[str] = []
+        current_raw: str | None = None
+
+        def flush():
+            if not buffer:
+                return
+            text = "".join(buffer).strip()
+            if not text:
+                buffer.clear()
+                return
+            label = self._speaker_name(job, current_raw)
+            segments.append((label, text))
+            buffer.clear()
+
         for item in getattr(alternative, "items", []) or []:
-            label = getattr(item, "speaker", None)
-            if label:
-                raw_label = label
-                break
-        return self._speaker_name(job, raw_label)
+            content = (getattr(item, "content", "") or "").strip()
+            if not content:
+                continue
+            speaker = getattr(item, "speaker", None)
+            item_type = getattr(item, "item_type", "pronunciation")
+            if item_type == "pronunciation":
+                if speaker is not None and speaker != current_raw:
+                    flush()
+                    current_raw = speaker
+                elif speaker is not None and current_raw is None:
+                    current_raw = speaker
+                elif speaker is None and current_raw is None:
+                    current_raw = "__unknown__"
+                if buffer:
+                    buffer.append(" ")
+                buffer.append(content)
+            else:
+                if not buffer:
+                    continue
+                buffer.append(content)
+        flush()
+        if not segments:
+            text = (getattr(alternative, "transcript", "") or "").strip()
+            if text:
+                segments.append((self._speaker_name(job, None), text))
+        return segments
 
     async def _handle_segment(self, job: PocJob, speaker_label: str, text: str, is_final: bool) -> None:
         entry = job.current_entry
         if entry and entry["speaker"] == speaker_label:
-            entry["text"] = text
-            payload = self._public_payload(entry)
-            await job.queue.put({"type": "transcript", "action": "update", "payload": payload})
+            if entry["text"] != text:
+                entry["text"] = text
+                payload = self._public_payload(entry)
+                await job.queue.put({"type": "transcript", "action": "update", "payload": payload})
             if is_final:
+                payload = self._public_payload(entry)
                 job.transcripts.append(payload)
+                await job.queue.put({"type": "transcript", "action": "update", "payload": payload})
                 job.current_entry = None
             return
 
