@@ -52,11 +52,14 @@ async def poc_stream(websocket: WebSocket, job_id: str):
 
     # Send backlog
     for payload in job.transcripts:
+        payload = dict(payload)
+        payload.setdefault("raw_speaker", payload.get("speaker", "spk_unk"))
         await websocket.send_json({"type": "transcript", "action": "append", "payload": payload})
     for entry in sorted(job.pending_results.values(), key=lambda item: item["index"]):
         payload = {
             "index": entry["index"],
             "speaker": entry["speaker"],
+            "raw_speaker": entry.get("raw_speaker", entry["speaker"]),
             "text": entry["text"],
             "timestamp": entry["timestamp"],
         }

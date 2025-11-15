@@ -117,6 +117,7 @@ class POCController:
             payload = {
                 "index": idx,
                 "speaker": "Speaker A" if idx % 2 else "Speaker B",
+                "raw_speaker": "spk_mock_a" if idx % 2 else "spk_mock_b",
                 "text": line,
                 "timestamp": now_iso(),
             }
@@ -238,8 +239,8 @@ class POCController:
                     text = (getattr(alternative, "transcript", "") or "").strip()
                     if not text:
                         continue
-                    speaker_label = self._speaker_from_items(job, alternative)
-                    await self._handle_result(job, result_id, speaker_label, text, not is_partial)
+                    speaker_label, raw_label = self._speaker_from_items(job, alternative)
+                    await self._handle_result(job, result_id, speaker_label, raw_label, text, not is_partial)
                     if not is_partial:
                         job.processed_result_ids.add(result_id)
 
@@ -266,7 +267,7 @@ class POCController:
             job.next_speaker_index += 1
         return job.speaker_labels[key]
 
-    def _speaker_from_items(self, job: PocJob, alternative: Any) -> str:
+    def _speaker_from_items(self, job: PocJob, alternative: Any) -> tuple[str, str]:
         counts: dict[str, int] = {}
         for item in getattr(alternative, "items", []) or []:
             label = getattr(item, "speaker", None)
@@ -274,14 +275,16 @@ class POCController:
                 continue
             counts[label] = counts.get(label, 0) + 1
         raw_label = max(counts, key=counts.get) if counts else None
-        return self._speaker_name(job, raw_label)
+        friendly = self._speaker_name(job, raw_label)
+        return friendly, (raw_label or "spk_unk")
 
-    async def _handle_result(self, job: PocJob, result_id: str, speaker_label: str, text: str, is_final: bool) -> None:
+    async def _handle_result(self, job: PocJob, result_id: str, speaker_label: str, raw_label: str, text: str, is_final: bool) -> None:
         entry = job.pending_results.get(result_id)
         if not entry:
             entry = {
                 "index": job.next_entry_index,
                 "speaker": speaker_label,
+                "raw_speaker": raw_label,
                 "text": text,
                 "timestamp": now_iso(),
             }
@@ -295,6 +298,7 @@ class POCController:
                 return
             entry["text"] = text
             entry["speaker"] = speaker_label
+            entry["raw_speaker"] = raw_label
             await job.queue.put({"type": "transcript", "action": "update", "payload": self._public_payload(entry)})
         if is_final:
             await self._finalize_result(job, result_id)
@@ -315,6 +319,7 @@ class POCController:
         return {
             "index": entry["index"],
             "speaker": entry["speaker"],
+            "raw_speaker": entry.get("raw_speaker", entry["speaker"]),
             "text": entry["text"],
             "timestamp": entry["timestamp"],
         }
