@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import List
 
-from pydantic import AnyHttpUrl
+from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -23,6 +23,15 @@ class Settings(BaseSettings):
     vonage_api_key: str = ""
     vonage_api_secret: str = ""
     vonage_private_key_path: str = "secrets/vonage_private.key"
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def split_cors(cls, value: str | list[str]) -> list[str] | list[AnyHttpUrl]:
+        if isinstance(value, str):
+            items = [item.strip() for item in value.split(",") if item.strip()]
+            default_value = cls.model_fields["cors_origins"].default  # type: ignore[index]
+            return items or default_value
+        return value
 
     class Config:
         env_file = str(Path(__file__).resolve().parents[1] / ".env")
