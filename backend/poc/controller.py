@@ -4,7 +4,6 @@ import asyncio
 import audioop
 import io
 import json
-import time
 import uuid
 import wave
 import logging
@@ -12,7 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from botocore.exceptions import BotoCoreError, ClientError
+from amazon_transcribe.auth import StaticCredentialResolver
+from amazon_transcribe.client import TranscribeStreamingClient
 
 from config import get_settings
 from services.bedrock_utils import summarize_transcript
@@ -98,8 +98,7 @@ class POCController:
     async def _process_audio(self, job: PocJob, audio_bytes: bytes) -> None:
         try:
             pcm_bytes, sample_rate = self._prepare_pcm(audio_bytes)
-            loop = asyncio.get_running_loop()
-            await asyncio.to_thread(self._run_transcribe_stream, job, pcm_bytes, sample_rate, loop)
+            await self._run_transcribe_stream(job, pcm_bytes, sample_rate)
         except Exception:
             self.logger.exception("Transcribe streaming failed for job %s, fallback to mock data", job.job_id)
             job.transcripts.clear()
@@ -174,44 +173,57 @@ class POCController:
 
         return raw, sample_rate
 
-    def _run_transcribe_stream(self, job: PocJob, pcm_bytes: bytes, sample_rate: int, loop: asyncio.AbstractEventLoop) -> None:
+    async def _run_transcribe_stream(self, job: PocJob, pcm_bytes: bytes, sample_rate: int) -> None:
         session = get_session()
-        # Need the dedicated streaming client for start_stream_transcription
-        client = session.client("transcribe-streaming", region_name=self.settings.aws_region)
+        credentials = session.get_credentials()
+        if not credentials:
+            raise RuntimeError("Unable to resolve AWS credentials for Transcribe streaming")
+        frozen = credentials.get_frozen_credentials()
+        credential_resolver = StaticCredentialResolver(
+            frozen.access_key,
+            frozen.secret_key,
+            frozen.token,
+        )
+        client = TranscribeStreamingClient(
+            region=self.settings.aws_region,
+            credential_resolver=credential_resolver,
+        )
         chunk_ms = 50
         chunk_bytes = max(1, int(sample_rate * 2 * chunk_ms / 1000))
+        chunk_sleep = chunk_ms / 1000
 
-        def audio_generator():
+        self.logger.info(
+            "Starting Transcribe stream job_id=%s sample_rate=%s chunk_bytes=%s",
+            job.job_id,
+            sample_rate,
+            chunk_bytes,
+        )
+        stream = await client.start_stream_transcription(
+            language_code="ja-JP",
+            media_encoding="pcm",
+            media_sample_rate_hz=sample_rate,
+        )
+
+        async def send_audio():
             for chunk in self._chunk_pcm(pcm_bytes, chunk_bytes):
-                yield {"AudioEvent": {"AudioChunk": chunk}}
-                time.sleep(chunk_ms / 1000)
-            yield {"AudioEvent": {"AudioChunk": b""}}
+                await stream.input_stream.send_audio_event(audio_chunk=chunk)
+                await asyncio.sleep(chunk_sleep)
+            await stream.input_stream.end_stream()
 
-        success = False
-        try:
-            self.logger.info(
-                "Starting Transcribe stream job_id=%s sample_rate=%s chunk_bytes=%s",
-                job.job_id,
-                sample_rate,
-                chunk_bytes,
-            )
-            response = client.start_stream_transcription(
-                LanguageCode="ja-JP",
-                MediaEncoding="pcm",
-                MediaSampleRateHertz=sample_rate,
-                AudioStream=audio_generator(),
-            )
-
-            for event in response["TranscriptResultStream"]:
-                transcript = event.get("Transcript", {})
-                for result in transcript.get("Results", []):
-                    if result.get("IsPartial"):
+        async def consume_results():
+            async for event in stream.output_stream:
+                transcript = getattr(event, "transcript", None)
+                if not transcript:
+                    continue
+                for result in getattr(transcript, "results", []) or []:
+                    if getattr(result, "is_partial", False):
                         continue
-                    for alternative in result.get("Alternatives", []):
-                        text = alternative.get("Transcript", "").strip()
+                    for alternative in getattr(result, "alternatives", []) or []:
+                        text = (getattr(alternative, "transcript", "") or "").strip()
                         if not text:
                             continue
-                        speaker = alternative.get("Items", [{}])[0].get("Speaker")
+                        items = getattr(alternative, "items", None) or []
+                        speaker = items[0].speaker if items and getattr(items[0], "speaker", None) else None
                         payload = {
                             "index": len(job.transcripts) + 1,
                             "speaker": speaker or ("Speaker A" if len(job.transcripts) % 2 == 0 else "Speaker B"),
@@ -219,14 +231,16 @@ class POCController:
                             "timestamp": now_iso(),
                         }
                         job.transcripts.append(payload)
-                        asyncio.run_coroutine_threadsafe(job.queue.put({"type": "transcript", "payload": payload}), loop)
+                        await job.queue.put({"type": "transcript", "payload": payload})
+
+        success = False
+        try:
+            await asyncio.gather(send_audio(), consume_results())
             success = True
-        except (BotoCoreError, ClientError):
-            raise
         finally:
             if success:
                 job.status = "completed"
-                asyncio.run_coroutine_threadsafe(job.queue.put({"type": "complete"}), loop)
+                await job.queue.put({"type": "complete"})
                 self.logger.info("Transcribe stream completed job_id=%s total_segments=%s", job.job_id, len(job.transcripts))
 
     def _chunk_pcm(self, pcm_bytes: bytes, chunk_size: int):
