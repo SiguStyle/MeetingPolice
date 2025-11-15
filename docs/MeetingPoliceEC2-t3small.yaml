@@ -185,7 +185,7 @@ Resources:
           sudo systemctl daemon-reload
           sudo systemctl enable meetingpolice-backend
           sudo systemctl start meetingpolice-backend
-
+          sudo chown -R ubuntu:ubuntu $PROJECT_ROOT
           echo "MeetingPolice (t3.small) setup complete."
     Metadata:
       Comment: EC2 sets up HTTPS FastAPI + Nginx from GitHub (t3.small)
