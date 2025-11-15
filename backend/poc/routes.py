@@ -53,12 +53,12 @@ async def poc_stream(websocket: WebSocket, job_id: str):
     # Send backlog
     for payload in job.transcripts:
         await websocket.send_json({"type": "transcript", "action": "append", "payload": payload})
-    if job.current_entry:
+    for entry in job.active_entries.values():
         payload = {
-            "index": job.current_entry["index"],
-            "speaker": job.current_entry["speaker"],
-            "text": job.current_entry["text"],
-            "timestamp": job.current_entry["timestamp"],
+            "index": entry["index"],
+            "speaker": entry["speaker"],
+            "text": entry["text"],
+            "timestamp": entry["timestamp"],
         }
         await websocket.send_json({"type": "transcript", "action": "append", "payload": payload})
     if job.status == "completed":
