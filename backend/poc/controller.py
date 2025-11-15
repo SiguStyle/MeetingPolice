@@ -213,9 +213,10 @@ class POCController:
         )
 
         async def send_audio():
+            chunk_delay = chunk_ms / 1000
             for chunk in self._chunk_pcm(pcm_bytes, chunk_bytes):
                 await stream.input_stream.send_audio_event(audio_chunk=chunk)
-                await asyncio.sleep(0)
+                await asyncio.sleep(chunk_delay)
             await stream.input_stream.end_stream()
 
         async def consume_results():
