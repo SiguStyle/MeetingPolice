@@ -176,8 +176,8 @@ Resources:
           [Service]
           User=ubuntu
           WorkingDirectory=/home/ubuntu/MeetingPolice/backend
-          Environment="PATH=/home/ubuntu/MeetingPolice/venv/bin"
-          ExecStart=/home/ubuntu/MeetingPolice/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+          Environment="PATH=/home/ubuntu/MeetingPolice/.venv/bin"
+          ExecStart=/home/ubuntu/MeetingPolice/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
           Restart=always
 
           [Install]
