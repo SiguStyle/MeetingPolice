@@ -30,12 +30,14 @@ MeetingPolice は、会議参加者にリアルタイムの音声解析結果を
 
 ## 開発手順
 
-1. `cp .env.example .env` で環境変数を準備し、AWS/Vonage の値を設定します。
-2. `secrets/vonage_private.key` に RSA 秘密鍵を配置します（ローカル動作のみなら空のままでもモックトークンが使用されます）。
-3. `./scripts/start_dev.sh` を実行すると、Python 仮想環境の構築 → FastAPI 起動 → 2 つの Vite Dev Server 起動が自動で行われます。
-4. API だけ確認したいときは `./scripts/start_backend.sh` を使うと 1 コマンドで `.venv` 構築・依存インストール・`uvicorn` 起動（ポートは `PORT` 環境変数で上書き可）まで完了します。
-5. フロントエンドをビルドして Nginx へ配置するには `./scripts/start_frontend.sh` を実行します。`session-app` / `admin-app` のビルド結果を `/var/www` に同期し、`nginx/default.conf` を `/etc/nginx/sites-{available|enabled}` に反映してリロードします。
-6. テストは `pytest` を使用します。AWS 関連は Stubber/モックでカバーされるため、実ネットワークなしで実行可能です。
+1. `python -m venv .venv && source .venv/bin/activate`
+2. `pip install -r requirements.txt`（Transcribe ストリーミングに必要な `boto3/botocore/amazon-transcribe` もここで導入されるため、OS や仮想環境を作り直してもこの手順だけで再現できます）
+3. `cp .env.example .env` で環境変数を準備し、AWS/Vonage の値を設定します。EC2 ロールを使う場合も `AWS_REGION` は必須です。
+4. `secrets/vonage_private.key` に RSA 秘密鍵を配置します（ローカル動作のみなら空のままでもモックトークンが使用されます）。
+5. `./scripts/start_dev.sh` を実行すると、Python 仮想環境の構築 → FastAPI 起動 → 2 つの Vite Dev Server 起動が自動で行われます。
+6. API だけ確認したいときは `./scripts/start_backend.sh` を使うと 1 コマンドで `.venv` 構築・依存インストール・`uvicorn` 起動（ポートは `PORT` 環境変数で上書き可）まで完了します。
+7. フロントエンドをビルドして Nginx へ配置するには `./scripts/start_frontend.sh` を実行します。`session-app` / `admin-app` のビルド結果を `/var/www` に同期し、`nginx/default.conf` を `/etc/nginx/sites-{available|enabled}` に反映してリロードします。
+8. テストは `pytest` を使用します。AWS 関連は Stubber/モックでカバーされるため、実ネットワークなしで実行可能です。
 
 > **補足**: `docs/MeetingPoliceEC2-t3small.yaml` のユーザーデータでも Node.js 20 の導入・バックエンド依存インストール・2 つのフロントビルドまでを自動化しているため、CloudFormation で t3.small を立てるだけで同じ手順が再現されます。
 
