@@ -30,6 +30,8 @@ class PocJob:
     status: str = "processing"
     transcripts: list[dict[str, Any]] = field(default_factory=list)
     queue: asyncio.Queue = field(default_factory=asyncio.Queue)
+    speaker_labels: dict[str, str] = field(default_factory=dict)
+    next_speaker_index: int = 1
 
 
 class POCController:
@@ -190,7 +192,6 @@ class POCController:
         )
         chunk_ms = 50
         chunk_bytes = max(1, int(sample_rate * 2 * chunk_ms / 1000))
-        chunk_sleep = chunk_ms / 1000
 
         self.logger.info(
             "Starting Transcribe stream job_id=%s sample_rate=%s chunk_bytes=%s",
@@ -202,12 +203,15 @@ class POCController:
             language_code="ja-JP",
             media_encoding="pcm",
             media_sample_rate_hz=sample_rate,
+            show_speaker_label=True,
+            enable_partial_results_stabilization=True,
+            partial_results_stability="medium",
         )
 
         async def send_audio():
             for chunk in self._chunk_pcm(pcm_bytes, chunk_bytes):
                 await stream.input_stream.send_audio_event(audio_chunk=chunk)
-                await asyncio.sleep(chunk_sleep)
+                await asyncio.sleep(0)
             await stream.input_stream.end_stream()
 
         async def consume_results():
@@ -219,19 +223,15 @@ class POCController:
                     if getattr(result, "is_partial", False):
                         continue
                     for alternative in getattr(result, "alternatives", []) or []:
-                        text = (getattr(alternative, "transcript", "") or "").strip()
-                        if not text:
-                            continue
-                        items = getattr(alternative, "items", None) or []
-                        speaker = items[0].speaker if items and getattr(items[0], "speaker", None) else None
-                        payload = {
-                            "index": len(job.transcripts) + 1,
-                            "speaker": speaker or ("Speaker A" if len(job.transcripts) % 2 == 0 else "Speaker B"),
-                            "text": text,
-                            "timestamp": now_iso(),
-                        }
-                        job.transcripts.append(payload)
-                        await job.queue.put({"type": "transcript", "payload": payload})
+                        for speaker_label, text in self._segments_from_alternative(job, alternative):
+                            payload = {
+                                "index": len(job.transcripts) + 1,
+                                "speaker": speaker_label,
+                                "text": text,
+                                "timestamp": now_iso(),
+                            }
+                            job.transcripts.append(payload)
+                            await job.queue.put({"type": "transcript", "payload": payload})
 
         success = False
         try:
@@ -246,3 +246,51 @@ class POCController:
     def _chunk_pcm(self, pcm_bytes: bytes, chunk_size: int):
         for idx in range(0, len(pcm_bytes), chunk_size):
             yield pcm_bytes[idx : idx + chunk_size]
+
+    def _segments_from_alternative(self, job: PocJob, alternative: Any) -> list[tuple[str, str]]:
+        segments: list[tuple[str, str]] = []
+        current_speaker: str | None = None
+        buffer: list[str] = []
+
+        def flush():
+            if not buffer:
+                return
+            speaker_name = self._speaker_name(job, current_speaker)
+            text = "".join(buffer).strip()
+            if text:
+                segments.append((speaker_name, text))
+            buffer.clear()
+
+        for item in getattr(alternative, "items", []) or []:
+            content = (getattr(item, "content", "") or "").strip()
+            if not content:
+                continue
+            speaker = getattr(item, "speaker", None) or current_speaker
+            item_type = getattr(item, "item_type", "pronunciation")
+            if item_type == "pronunciation":
+                if speaker != current_speaker:
+                    flush()
+                    current_speaker = speaker
+                if buffer:
+                    buffer.append(" ")
+                buffer.append(content)
+            else:
+                if not buffer:
+                    continue
+                buffer.append(content)
+                if content in {"。", "！", "?", "？", "!", "."}:
+                    flush()
+        flush()
+        if not segments:
+            text = (getattr(alternative, "transcript", "") or "").strip()
+            if text:
+                segments.append((self._speaker_name(job, None), text))
+        return segments
+
+    def _speaker_name(self, job: PocJob, raw_label: str | None) -> str:
+        key = raw_label or "__unknown__"
+        if key not in job.speaker_labels:
+            label = f"Speaker {job.next_speaker_index}"
+            job.speaker_labels[key] = label
+            job.next_speaker_index += 1
+        return job.speaker_labels[key]
