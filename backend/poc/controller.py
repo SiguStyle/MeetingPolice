@@ -33,7 +33,7 @@ class PocJob:
     speaker_labels: dict[str, str] = field(default_factory=dict)
     next_speaker_index: int = 1
     next_entry_index: int = 1
-    active_entries: dict[str, dict[str, Any]] = field(default_factory=dict)
+    pending_results: dict[str, dict[str, Any]] = field(default_factory=dict)
     processed_result_ids: set[str] = field(default_factory=set)
 
 
@@ -225,8 +225,10 @@ class POCController:
                     continue
                 for result in getattr(transcript, "results", []) or []:
                     result_id = getattr(result, "result_id", None)
+                    if not result_id:
+                        continue
                     is_partial = getattr(result, "is_partial", False)
-                    if not is_partial and result_id and result_id in job.processed_result_ids:
+                    if not is_partial and result_id in job.processed_result_ids:
                         continue
                     alternatives = getattr(result, "alternatives", []) or []
                     if not alternatives:
@@ -236,8 +238,8 @@ class POCController:
                     if not text:
                         continue
                     speaker_label = self._speaker_from_items(job, alternative)
-                    await self._handle_segment(job, speaker_label, text, is_final=not is_partial)
-                    if not is_partial and result_id:
+                    await self._handle_result(job, result_id, speaker_label, text, not is_partial)
+                    if not is_partial:
                         job.processed_result_ids.add(result_id)
 
         success = False
@@ -245,7 +247,7 @@ class POCController:
             await asyncio.gather(send_audio(), consume_results())
             success = True
         finally:
-            await self._finalize_active_entries(job)
+            await self._finalize_pending_results(job)
             if success:
                 job.status = "completed"
                 await job.queue.put({"type": "complete"})
@@ -273,8 +275,8 @@ class POCController:
         raw_label = max(counts, key=counts.get) if counts else None
         return self._speaker_name(job, raw_label)
 
-    async def _handle_segment(self, job: PocJob, speaker_label: str, text: str, is_final: bool) -> None:
-        entry = job.active_entries.get(speaker_label)
+    async def _handle_result(self, job: PocJob, result_id: str, speaker_label: str, text: str, is_final: bool) -> None:
+        entry = job.pending_results.get(result_id)
         if not entry:
             entry = {
                 "index": job.next_entry_index,
@@ -283,29 +285,30 @@ class POCController:
                 "timestamp": now_iso(),
             }
             job.next_entry_index += 1
-            job.active_entries[speaker_label] = entry
+            job.pending_results[result_id] = entry
             await job.queue.put({"type": "transcript", "action": "append", "payload": self._public_payload(entry)})
         else:
-            if entry["text"] == text:
+            if entry["text"] == text and entry["speaker"] == speaker_label:
                 if is_final:
-                    await self._finalize_entry(job, speaker_label)
+                    await self._finalize_result(job, result_id)
                 return
             entry["text"] = text
+            entry["speaker"] = speaker_label
             await job.queue.put({"type": "transcript", "action": "update", "payload": self._public_payload(entry)})
         if is_final:
-            await self._finalize_entry(job, speaker_label)
+            await self._finalize_result(job, result_id)
 
-    async def _finalize_entry(self, job: PocJob, speaker_label: str) -> None:
-        entry = job.active_entries.pop(speaker_label, None)
+    async def _finalize_result(self, job: PocJob, result_id: str) -> None:
+        entry = job.pending_results.pop(result_id, None)
         if not entry:
             return
         payload = self._public_payload(entry)
         job.transcripts.append(payload)
         await job.queue.put({"type": "transcript", "action": "update", "payload": payload})
 
-    async def _finalize_active_entries(self, job: PocJob) -> None:
-        for speaker_label in list(job.active_entries.keys()):
-            await self._finalize_entry(job, speaker_label)
+    async def _finalize_pending_results(self, job: PocJob) -> None:
+        for result_id in list(job.pending_results.keys()):
+            await self._finalize_result(job, result_id)
 
     def _public_payload(self, entry: dict[str, Any]) -> dict[str, Any]:
         return {
