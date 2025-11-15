@@ -25,6 +25,7 @@ export type PocTranscript = {
   index: number;
   speaker: string;
   raw_speaker?: string;
+  result_id?: string;
   text: string;
   timestamp: string;
 };

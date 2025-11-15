@@ -118,6 +118,7 @@ class POCController:
                 "index": idx,
                 "speaker": "Speaker A" if idx % 2 else "Speaker B",
                 "raw_speaker": "spk_mock_a" if idx % 2 else "spk_mock_b",
+                "result_id": f"mock-{idx}",
                 "text": line,
                 "timestamp": now_iso(),
             }
@@ -285,6 +286,7 @@ class POCController:
                 "index": job.next_entry_index,
                 "speaker": speaker_label,
                 "raw_speaker": raw_label,
+                "result_id": result_id,
                 "text": text,
                 "timestamp": now_iso(),
             }
@@ -320,6 +322,7 @@ class POCController:
             "index": entry["index"],
             "speaker": entry["speaker"],
             "raw_speaker": entry.get("raw_speaker", entry["speaker"]),
+            "result_id": entry.get("result_id"),
             "text": entry["text"],
             "timestamp": entry["timestamp"],
         }

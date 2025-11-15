@@ -22,6 +22,9 @@ export function PocPage() {
   const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<PocTranscript[]>([]);
+  const [debugEntries, setDebugEntries] = useState<
+    { id: string; speaker: string; raw: string; length: number; text: string; timestamp: string; action: string }[]
+  >([]);
   const [status, setStatus] = useState<'idle' | 'streaming' | 'complete'>('idle');
   const [message, setMessage] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<PocAnalysisResult | null>(null);
@@ -112,19 +115,36 @@ export function PocPage() {
         const payload = data.payload as PocTranscript;
         const action = (data.action as 'append' | 'update' | undefined) ?? 'append';
         setTranscripts((prev) => {
+          const key = payload.result_id ?? `idx-${payload.index}`;
+          const updateExisting = (items: PocTranscript[]) =>
+            items.map((item) => {
+              const itemKey = item.result_id ?? `idx-${item.index}`;
+              if (itemKey !== key) return item;
+              return { ...item, ...payload };
+            });
+          const exists = prev.some((item) => (item.result_id ?? `idx-${item.index}`) === key);
           if (action === 'append') {
-            const exists = prev.some((item) => item.index === payload.index);
             if (exists) {
-              return prev.map((item) => (item.index === payload.index ? payload : item));
+              return updateExisting(prev);
             }
             return [...prev, payload];
           }
-          if (action === 'update') {
-            return prev.map((item) =>
-              item.index === payload.index ? { ...item, text: payload.text, speaker: payload.speaker } : item,
-            );
+          if (action === 'update' && exists) {
+            return updateExisting(prev);
           }
           return prev;
+        });
+        setDebugEntries((prev) => {
+          const entry = {
+            id: payload.result_id ?? `idx-${payload.index}`,
+            speaker: payload.speaker,
+            raw: payload.raw_speaker ?? 'spk_unk',
+            length: payload.text.length,
+            text: payload.text.slice(0, 120),
+            timestamp: payload.timestamp,
+            action,
+          };
+          return [entry, ...prev].slice(0, 25);
         });
       } else if (data.type === 'complete') {
         setStatus('complete');
@@ -184,6 +204,45 @@ export function PocPage() {
           <div className="audio-preview">
             <p className="label">アップロード音声</p>
             <audio ref={audioRef} src={audioPreviewUrl} controls />
+          </div>
+        )}
+      </section>
+
+      <section className="panel debug-panel">
+        <div className="panel-header">
+          <div>
+            <p className="label">デバッグ: ストリーム応答</p>
+            <h2>最新 {debugEntries.length} 件</h2>
+          </div>
+        </div>
+        {debugEntries.length === 0 ? (
+          <p className="faded">まだ応答はありません。</p>
+        ) : (
+          <div className="debug-table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Friendly</th>
+                  <th>Raw</th>
+                  <th>Length</th>
+                  <th>Result ID</th>
+                  <th>Preview</th>
+                </tr>
+              </thead>
+              <tbody>
+                {debugEntries.map((entry) => (
+                  <tr key={`${entry.id}-${entry.timestamp}-${entry.action}`}>
+                    <td>{entry.action}</td>
+                    <td>{entry.speaker}</td>
+                    <td className="mono">{entry.raw}</td>
+                    <td>{entry.length}</td>
+                    <td className="mono">{entry.id}</td>
+                    <td className="preview">{entry.text}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>
