@@ -109,7 +109,23 @@ export function PocPage() {
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'transcript') {
-        setTranscripts((prev) => [...prev, data.payload as PocTranscript]);
+        const payload = data.payload as PocTranscript;
+        const action = (data.action as 'append' | 'update' | undefined) ?? 'append';
+        setTranscripts((prev) => {
+          if (action === 'append') {
+            const exists = prev.some((item) => item.index === payload.index);
+            if (exists) {
+              return prev.map((item) => (item.index === payload.index ? payload : item));
+            }
+            return [...prev, payload];
+          }
+          if (action === 'update') {
+            return prev.map((item) =>
+              item.index === payload.index ? { ...item, text: payload.text, speaker: payload.speaker } : item,
+            );
+          }
+          return prev;
+        });
       } else if (data.type === 'complete') {
         setStatus('complete');
         setMessage('文字起こしが完了しました。');

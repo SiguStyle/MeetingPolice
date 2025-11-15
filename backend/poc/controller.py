@@ -32,6 +32,7 @@ class PocJob:
     queue: asyncio.Queue = field(default_factory=asyncio.Queue)
     speaker_labels: dict[str, str] = field(default_factory=dict)
     next_speaker_index: int = 1
+    current_entry: dict[str, Any] | None = None
 
 
 class POCController:
@@ -118,7 +119,7 @@ class POCController:
                 "timestamp": now_iso(),
             }
             job.transcripts.append(payload)
-            await job.queue.put({"type": "transcript", "payload": payload})
+            await job.queue.put({"type": "transcript", "action": "append", "payload": payload})
             await asyncio.sleep(1.2)
         job.status = "completed"
         transcript_path.write_text(json.dumps(job.transcripts, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -220,24 +221,23 @@ class POCController:
                 if not transcript:
                     continue
                 for result in getattr(transcript, "results", []) or []:
-                    if getattr(result, "is_partial", False):
+                    alternatives = getattr(result, "alternatives", []) or []
+                    if not alternatives:
                         continue
-                    for alternative in getattr(result, "alternatives", []) or []:
-                        for speaker_label, text in self._segments_from_alternative(job, alternative):
-                            payload = {
-                                "index": len(job.transcripts) + 1,
-                                "speaker": speaker_label,
-                                "text": text,
-                                "timestamp": now_iso(),
-                            }
-                            job.transcripts.append(payload)
-                            await job.queue.put({"type": "transcript", "payload": payload})
+                    alternative = alternatives[0]
+                    text = (getattr(alternative, "transcript", "") or "").strip()
+                    if not text:
+                        continue
+                    speaker_label = self._speaker_from_alternative(job, alternative)
+                    is_final = not getattr(result, "is_partial", False)
+                    await self._handle_segment(job, speaker_label, text, is_final)
 
         success = False
         try:
             await asyncio.gather(send_audio(), consume_results())
             success = True
         finally:
+            await self._finalize_current_entry(job)
             if success:
                 job.status = "completed"
                 await job.queue.put({"type": "complete"})
@@ -247,46 +247,6 @@ class POCController:
         for idx in range(0, len(pcm_bytes), chunk_size):
             yield pcm_bytes[idx : idx + chunk_size]
 
-    def _segments_from_alternative(self, job: PocJob, alternative: Any) -> list[tuple[str, str]]:
-        segments: list[tuple[str, str]] = []
-        current_speaker: str | None = None
-        buffer: list[str] = []
-
-        def flush():
-            if not buffer:
-                return
-            speaker_name = self._speaker_name(job, current_speaker)
-            text = "".join(buffer).strip()
-            if text:
-                segments.append((speaker_name, text))
-            buffer.clear()
-
-        for item in getattr(alternative, "items", []) or []:
-            content = (getattr(item, "content", "") or "").strip()
-            if not content:
-                continue
-            speaker = getattr(item, "speaker", None) or current_speaker
-            item_type = getattr(item, "item_type", "pronunciation")
-            if item_type == "pronunciation":
-                if speaker != current_speaker:
-                    flush()
-                    current_speaker = speaker
-                if buffer:
-                    buffer.append(" ")
-                buffer.append(content)
-            else:
-                if not buffer:
-                    continue
-                buffer.append(content)
-                if content in {"。", "！", "?", "？", "!", "."}:
-                    flush()
-        flush()
-        if not segments:
-            text = (getattr(alternative, "transcript", "") or "").strip()
-            if text:
-                segments.append((self._speaker_name(job, None), text))
-        return segments
-
     def _speaker_name(self, job: PocJob, raw_label: str | None) -> str:
         key = raw_label or "__unknown__"
         if key not in job.speaker_labels:
@@ -294,3 +254,57 @@ class POCController:
             job.speaker_labels[key] = label
             job.next_speaker_index += 1
         return job.speaker_labels[key]
+
+    def _speaker_from_alternative(self, job: PocJob, alternative: Any) -> str:
+        raw_label = None
+        for item in getattr(alternative, "items", []) or []:
+            label = getattr(item, "speaker", None)
+            if label:
+                raw_label = label
+                break
+        return self._speaker_name(job, raw_label)
+
+    async def _handle_segment(self, job: PocJob, speaker_label: str, text: str, is_final: bool) -> None:
+        entry = job.current_entry
+        if entry and entry["speaker"] == speaker_label:
+            entry["text"] = text
+            payload = self._public_payload(entry)
+            await job.queue.put({"type": "transcript", "action": "update", "payload": payload})
+            if is_final:
+                job.transcripts.append(payload)
+                job.current_entry = None
+            return
+
+        if entry:
+            await self._finalize_current_entry(job)
+
+        index = len(job.transcripts) + 1
+        new_entry = {
+            "index": index,
+            "speaker": speaker_label,
+            "text": text,
+            "timestamp": now_iso(),
+        }
+        payload = self._public_payload(new_entry)
+        if is_final:
+            job.transcripts.append(payload)
+            await job.queue.put({"type": "transcript", "action": "append", "payload": payload})
+        else:
+            job.current_entry = new_entry
+            await job.queue.put({"type": "transcript", "action": "append", "payload": payload})
+
+    async def _finalize_current_entry(self, job: PocJob) -> None:
+        if not job.current_entry:
+            return
+        payload = self._public_payload(job.current_entry)
+        job.transcripts.append(payload)
+        await job.queue.put({"type": "transcript", "action": "update", "payload": payload})
+        job.current_entry = None
+
+    def _public_payload(self, entry: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "index": entry["index"],
+            "speaker": entry["speaker"],
+            "text": entry["text"],
+            "timestamp": entry["timestamp"],
+        }
