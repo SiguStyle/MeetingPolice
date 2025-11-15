@@ -303,31 +303,6 @@ button {
   margin-left: 1.25rem;
 }
 
-.debug-panel .debug-table-wrapper {
-  overflow-x: auto;
-}
-
-.debug-panel table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.85rem;
-}
-
-.debug-panel th,
-.debug-panel td {
-  padding: 0.35rem 0.5rem;
-  text-align: left;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.debug-panel td.mono {
-  font-family: 'Roboto Mono', 'Courier New', monospace;
-}
-
-.debug-panel td.preview {
-  font-family: 'Noto Sans JP', sans-serif;
-}
-
 .pill {
   display: inline-flex;
   align-items: center;
