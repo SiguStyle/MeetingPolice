@@ -94,6 +94,7 @@ Resources:
           sudo -u ubuntu git clone ${GitRepoURL} $PROJECT_ROOT || \
             (cd $PROJECT_ROOT && sudo -u ubuntu git pull)
           sudo chown -R ubuntu:ubuntu $PROJECT_ROOT
+          sudo -u ubuntu git config --global --add safe.directory /home/ubuntu/MeetingPolice
           cd $PROJECT_ROOT
 
           # ---- Backend: Python virtual environment & dependencies ----
