@@ -107,15 +107,12 @@ Resources:
             pip install fastapi uvicorn[standard]
           fi
 
-          # ---- Frontend: build session-app ----
-          cd $PROJECT_ROOT/frontend/session-app
-          npm install
-          npm run build
+          # ---- Frontend: build session-app (as ubuntu) ----
+          sudo -u ubuntu bash -lc "cd $PROJECT_ROOT/frontend/session-app && npm install && npm run build"
 
-          # ---- Frontend: build admin-app ----
-          cd $PROJECT_ROOT/frontend/admin-app
-          npm install
-          npm run build
+          # ---- Frontend: build admin-app (as ubuntu) ----
+          sudo -u ubuntu bash -lc "cd $PROJECT_ROOT/frontend/admin-app && npm install && npm run build"
+
 
           # ---- Generate self-signed SSL certificate ----
           sudo mkdir -p /etc/ssl/meetingpolice
