@@ -19,6 +19,7 @@ const buildWsUrl = (path: string) => {
 export function PocPage() {
   const [agendaFile, setAgendaFile] = useState<File | null>(null);
   const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<PocTranscript[]>([]);
   const [status, setStatus] = useState<'idle' | 'streaming' | 'complete'>('idle');
@@ -26,6 +27,7 @@ export function PocPage() {
   const [analysis, setAnalysis] = useState<PocAnalysisResult | null>(null);
   const [jobAgenda, setJobAgenda] = useState<string>('');
   const wsRef = useRef<WebSocket | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     return () => {
@@ -34,6 +36,23 @@ export function PocPage() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!audioFile) {
+      setAudioPreviewUrl((prev) => {
+        if (prev) {
+          URL.revokeObjectURL(prev);
+        }
+        return null;
+      });
+      return;
+    }
+    const url = URL.createObjectURL(audioFile);
+    setAudioPreviewUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [audioFile]);
 
   useEffect(() => {
     const fetchJob = async () => {
@@ -68,6 +87,13 @@ export function PocPage() {
       setTranscripts([]);
       setStatus('streaming');
       connectWebSocket(response.job_id);
+      if (audioRef.current && audioPreviewUrl) {
+        audioRef.current.currentTime = 0;
+        const playPromise = audioRef.current.play();
+        if (playPromise) {
+          playPromise.catch((err) => console.warn('Audio autoplay blocked', err));
+        }
+      }
     } catch (err) {
       const text = err instanceof Error ? err.message : 'アップロードに失敗しました';
       setMessage(text);
@@ -130,12 +156,18 @@ export function PocPage() {
           </button>
         </form>
         {message && <p className="info-text">{message}</p>}
-        {jobId && (
-          <div className="job-meta">
+      {jobId && (
+        <div className="job-meta">
             <p className="label">Job ID</p>
             <code>{jobId}</code>
             <p className="label">ステータス</p>
             <span className={`pill ${status}`}>{status}</span>
+          </div>
+        )}
+        {audioPreviewUrl && (
+          <div className="audio-preview">
+            <p className="label">アップロード音声</p>
+            <audio ref={audioRef} src={audioPreviewUrl} controls />
           </div>
         )}
       </section>
