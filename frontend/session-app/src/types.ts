@@ -24,6 +24,7 @@ export type AnalyticsSample = {
 export type PocTranscript = {
   index: number;
   speaker: string;
+  raw_speaker?: string;
   text: string;
   timestamp: string;
 };

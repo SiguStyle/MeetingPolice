@@ -302,3 +302,31 @@ button {
 .analysis-result ul {
   margin-left: 1.25rem;
 }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.75rem;
+  background: #e2e8f0;
+  color: #0f172a;
+  margin: 0 0.5rem;
+}
+
+.pill.mono {
+  font-family: 'Roboto Mono', 'Courier New', monospace;
+  text-transform: none;
+}
+
+.pill.streaming {
+  background: #fef3c7;
+}
+
+.pill.complete {
+  background: #d1fae5;
+}
+
+.pill.idle {
+  background: #e2e8f0;
+}

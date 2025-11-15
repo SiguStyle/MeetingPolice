@@ -205,6 +205,7 @@ export function PocPage() {
             <article key={item.timestamp + item.index} className="transcript-item">
               <header>
                 <strong>{item.speaker}</strong>
+                {item.raw_speaker && <span className="pill mono">{item.raw_speaker}</span>}
                 <span>{item.timestamp}</span>
               </header>
               <p>{item.text}</p>
