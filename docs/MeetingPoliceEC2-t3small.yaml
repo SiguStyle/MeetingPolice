@@ -211,6 +211,15 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
         - arn:aws:iam::aws:policy/AmazonTranscribeFullAccess
+      Policies:
+        - PolicyName: MeetingPoliceDescribeElb
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - elasticloadbalancing:DescribeLoadBalancers
+                Resource: "*"
 
   MeetingPoliceInstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -219,6 +228,8 @@ Resources:
 
   MeetingPoliceEC2:
     Type: AWS::EC2::Instance
+    DependsOn:
+      - MeetingPoliceALB
     Properties:
       InstanceType: t3.small
       SubnetId: !Ref MeetingPolicePrivateSubnet
@@ -237,7 +248,7 @@ Resources:
 
           # ---- Basic setup ----
           sudo apt update -y
-          sudo apt install -y git nginx python3 python3-venv python3-pip curl snapd
+          sudo apt install -y git nginx python3 python3-venv python3-pip curl snapd openssl awscli
           # ---- Install Node.js 20 LTS (supports Vite build) ----
           curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
           sudo apt install -y nodejs
@@ -330,6 +341,19 @@ Resources:
           sudo systemctl enable meetingpolice-backend
           sudo systemctl start meetingpolice-backend
           sudo chown -R ubuntu:ubuntu $PROJECT_ROOT
+
+          # ---- Generate self-signed cert using ALB DNS for later ACM import ----
+          AWS_REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
+          ALB_DNS=$(aws elbv2 describe-load-balancers --names meetingpolice-alb --region "${AWS_REGION}" --query 'LoadBalancers[0].DNSName' --output text || true)
+          if [ -n "$ALB_DNS" ] && [ "$ALB_DNS" != "None" ]; then
+            sudo -u ubuntu openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+              -keyout /home/ubuntu/meetingpolice-selfsigned.key \
+              -out /home/ubuntu/meetingpolice-selfsigned.crt \
+              -subj "/CN=${ALB_DNS}"
+            echo "Generated self-signed cert for ${ALB_DNS} under /home/ubuntu."
+          else
+            echo "ALB DNS not available; skipped self-signed cert generation."
+          fi
           echo "MeetingPolice (t3.small) setup complete."
     Metadata:
       Comment: EC2 sets up FastAPI + Nginx from GitHub (t3.small)
