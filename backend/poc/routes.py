@@ -50,6 +50,8 @@ async def classify_poc_job(job_id: str, refresh: bool = False):
         raise HTTPException(status_code=404, detail="ジョブが見つかりません") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.websocket("/ws/{job_id}")
