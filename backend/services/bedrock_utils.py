@@ -9,7 +9,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from config import get_settings
 from utils.auth_aws import get_session
 
-CLASSIFICATION_LABELS = ["議事進行", "報告", "相談や質問", "回答", "決定", "雑談"]
+CLASSIFICATION_LABELS = ["議事進行", "報告", "提案", "相談", "質問", "回答", "決定", "無関係な雑談"]
 
 
 def _bedrock_client(client: Any | None = None):
@@ -84,25 +84,31 @@ def summarize_transcript(meeting_id: str, transcript_text: str, client: Any | No
 
 
 def classify_transcript_segments(segments: list[dict[str, Any]], client: Any | None = None) -> list[dict[str, Any]]:
-    clean_segments = [
-        {
-            "index": segment.get("index"),
-            "speaker": segment.get("speaker") or "",
-            "text": segment.get("text") or "",
-        }
-        for segment in segments
-        if segment.get("text")
-    ]
+    clean_segments = []
+    for segment in segments:
+        text = (segment.get("text") or "").strip()
+        if not text:
+            continue
+        clean_segments.append(
+            {
+                "index": segment.get("index"),
+                "speaker": segment.get("speaker") or "",
+                "text": text,
+                "context_before": (segment.get("context_before") or "").strip(),
+                "context_after": (segment.get("context_after") or "").strip(),
+            }
+        )
     if not clean_segments:
         return []
 
     settings = get_settings()
     prompt = (
-        "あなたは日本語の議事録を分類するアシスタントです。\n"
-        "各発話を次のカテゴリのいずれか1つに分類してください:\n"
+        "あなたは日本語の議事録を文単位で分類するアシスタントです。\n"
+        "各文を次のカテゴリのうち1つに必ず割り当ててください:\n"
         f"{', '.join(CLASSIFICATION_LABELS)}。\n"
-        "JSON 配列で返し、各要素は {\"index\":番号,\"category\":\"分類名\"} としてください。\n"
-        "以下の発話一覧を分類してください:\n"
+        "context_before と context_after で前後の文脈を参考にしながら、文脈に沿った分類を行ってください。\n"
+        "レスポンスは JSON 配列で、各要素は {\"index\":番号,\"category\":\"分類名\"} の形にしてください。\n"
+        "以下の文一覧を分類してください:\n"
         f"{json.dumps(clean_segments, ensure_ascii=False)}"
     )
     payload = {
@@ -168,7 +174,7 @@ def _merge_classifications(segments: list[dict[str, Any]], classified: list[dict
         idx = segment["index"]
         category = index_to_category.get(idx, _guess_category(segment["text"]))
         if category not in CLASSIFICATION_LABELS:
-            category = "雑談"
+            category = "無関係な雑談"
         merged.append({**segment, "category": category})
     return merged
 
@@ -183,14 +189,16 @@ def _fallback_classification(segments: list[dict[str, Any]]) -> list[dict[str, A
 def _guess_category(text: str) -> str:
     lowered = text.lower()
     cues = [
-        ("議事進行", ["議題", "進行", "次に", "本題"]),
-        ("報告", ["報告", "共有", "アップデート", "結果"]),
-        ("相談や質問", ["どう", "できますか", "質問", "相談"]),
-        ("回答", ["回答", "説明します", "対応します", "承知"]),
-        ("決定", ["決定", "合意", "確定", "採用"]),
-        ("雑談", []),
+        ("議事進行", ["議題", "進行", "次に", "本題", "開始", "終了"]),
+        ("報告", ["報告", "共有", "アップデート", "結果", "進捗", "ステータス"]),
+        ("提案", ["提案", "アイデア", "案", "どうでしょう", "検討"]),
+        ("相談", ["相談", "一緒に", "助け", "サポート", "悩んで"]),
+        ("質問", ["?", "か?", "教えて", "でしょうか", "質問"]),
+        ("回答", ["回答", "説明します", "対応します", "お答え", "承知"]),
+        ("決定", ["決定", "合意", "確定", "承認", "決めましょう"]),
+        ("無関係な雑談", ["雑談", "世間話", "余談", "週末", "天気", "ランチ"]),
     ]
     for label, keywords in cues:
         if any(keyword in text for keyword in keywords) or any(keyword in lowered for keyword in keywords):
             return label
-    return "雑談"
+    return "無関係な雑談"

@@ -19,10 +19,12 @@ const buildWsUrl = (path: string) => {
 const CATEGORY_STYLES: Record<PocCategory, string> = {
   議事進行: 'category-agenda',
   報告: 'category-report',
-  '相談や質問': 'category-question',
+  提案: 'category-proposal',
+  相談: 'category-consult',
+  質問: 'category-question',
   回答: 'category-answer',
   決定: 'category-decision',
-  雑談: 'category-chitchat',
+  無関係な雑談: 'category-offtopic',
 };
 
 export function PocPage() {
@@ -298,20 +300,20 @@ export function PocPage() {
         {classificationLoading && <p className="faded">Bedrock にリクエスト中です…</p>}
         {!classificationLoading && (
           <p className="faded">
-            ボタンを押すと、現在までに確定した文字起こしを Bedrock に送り、カテゴリ（議事進行/報告/相談や質問/回答/決定/雑談）で色分け表示します。
+            ボタンを押すと、現在までに確定した文字起こしを Bedrock に送り、カテゴリ（議事進行/報告/提案/相談/質問/回答/決定/無関係な雑談）で色分け表示します。
           </p>
         )}
         {classifiedSegments.length > 0 && (
-          <div className="classification-grid">
+          <div className="classification-list">
             {classifiedSegments.map((segment) => (
               <article
                 key={segment.index}
-                className={`classification-item ${CATEGORY_STYLES[segment.category]}`}
+                className={`classification-row ${CATEGORY_STYLES[segment.category]}`}
               >
-                <header>
+                <div className="classification-meta">
                   <strong>{segment.speaker}</strong>
                   <span className="category-tag">{segment.category}</span>
-                </header>
+                </div>
                 <p>{segment.text}</p>
               </article>
             ))}

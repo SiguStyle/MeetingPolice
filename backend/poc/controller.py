@@ -4,6 +4,7 @@ import asyncio
 import audioop
 import io
 import json
+import re
 import uuid
 import wave
 import logging
@@ -110,11 +111,14 @@ class POCController:
             raise ValueError("Transcription not ready yet")
         if job.classified_segments and not refresh:
             return job.classified_segments
-        segments = await asyncio.to_thread(classify_transcript_segments, job.transcripts)
-        job.classified_segments = segments
-        if segments:
-            await job.queue.put({"type": "classification", "payload": segments})
-        return segments
+        sentence_segments = self._sentence_segments(job)
+        if not sentence_segments:
+            raise ValueError("No transcript sentences available yet")
+        classified = await asyncio.to_thread(classify_transcript_segments, sentence_segments)
+        job.classified_segments = classified
+        if classified:
+            await job.queue.put({"type": "classification", "payload": classified})
+        return classified
 
     async def _process_audio(self, job: PocJob, audio_bytes: bytes) -> None:
         try:
@@ -342,3 +346,40 @@ class POCController:
             "text": entry["text"],
             "timestamp": entry["timestamp"],
         }
+
+    def _sentence_segments(self, job: PocJob) -> list[dict[str, Any]]:
+        segments: list[dict[str, Any]] = []
+        idx = 1
+        for transcript in job.transcripts:
+            speaker = transcript.get("speaker", "")
+            sentences = _split_sentences(transcript.get("text", ""))
+            for sentence in sentences:
+                segments.append(
+                    {
+                        "index": idx,
+                        "speaker": speaker,
+                        "text": sentence,
+                        "context_before": "",
+                        "context_after": "",
+                    }
+                )
+                idx += 1
+        for i, segment in enumerate(segments):
+            if i > 0:
+                segment["context_before"] = segments[i - 1]["text"]
+            if i + 1 < len(segments):
+                segment["context_after"] = segments[i + 1]["text"]
+        return segments
+
+
+SENTENCE_RE = re.compile(r"[^。！？!?]+[。！？!?]?")
+
+
+def _split_sentences(text: str) -> list[str]:
+    if not text:
+        return []
+    matches = SENTENCE_RE.findall(text)
+    sentences = [match.strip() for match in matches if match.strip()]
+    if not sentences and text.strip():
+        sentences = [text.strip()]
+    return sentences
