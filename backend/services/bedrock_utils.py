@@ -143,12 +143,23 @@ def classify_transcript_segments(segments: list[dict[str, Any]], client: Any | N
     if not clean_segments:
         return []
 
+    category_guidance = (
+        "議事進行=会議の段取りや進め方/次の議題の指示\n"
+        "報告=進捗や結果、現状共有\n"
+        "提案=新しい案や改善点の持ちかけ\n"
+        "相談=協力依頼や迷いの吐露\n"
+        "質問=情報を求める発言\n"
+        "回答=質問への答え・説明\n"
+        "決定=意思決定や合意事項の明言\n"
+        "無関係な雑談=業務と直接関係しない雑談"
+    )
     prompt = (
         "あなたは日本語の議事録を文単位で分類するアシスタントです。\n"
-        "各文を次のカテゴリのうち1つに必ず割り当ててください:\n"
-        f"{', '.join(CLASSIFICATION_LABELS)}。\n"
-        "context_before と context_after で前後の文脈を参考にしながら、文脈に沿った分類を行ってください。\n"
-        "レスポンスは JSON 配列で、各要素は {\"index\":番号,\"category\":\"分類名\"} の形にしてください。\n"
+        "必ず同じ基準で安定した判断を行い、文脈(context_before/context_after)も考慮してください。\n"
+        "カテゴリ定義:\n"
+        f"{category_guidance}\n"
+        "出力形式は JSON 配列のみで、各要素は {\"index\":番号,\"category\":\"分類名\"} です。\n"
+        "未知のカテゴリは使わず、必ず上記ラベルのいずれか1つを割り当ててください。\n"
         "以下の文一覧を分類してください:\n"
         f"{json.dumps(clean_segments, ensure_ascii=False)}"
     )
