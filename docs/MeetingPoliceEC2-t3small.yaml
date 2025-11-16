@@ -26,10 +26,6 @@ Parameters:
   AlbSubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
     Description: Two public subnets for the Application Load Balancer
-  AllowedSshCidr:
-    Type: String
-    Description: CIDR block allowed to SSH to the instance
-    Default: 0.0.0.0/0
   AcmCertificateArn:
     Type: String
     Description: ACM certificate ARN used by the HTTPS listener (warning occurs when accessing ALB DNS directly)
@@ -38,13 +34,9 @@ Resources:
   MeetingPoliceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Allow SSH from trusted CIDR and HTTP/HTTPS only from ALB
+      GroupDescription: Allow HTTP/HTTPS only from ALB
       VpcId: !Ref VpcId
       SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: !Ref AllowedSshCidr
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
