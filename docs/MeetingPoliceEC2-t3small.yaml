@@ -33,6 +33,13 @@ Parameters:
     Type: String
     Description: CIDR block for the private application subnet (EC2)
     Default: 10.20.11.0/24
+  AcmCertificateArn:
+    Type: String
+    Description: Optional ACM certificate ARN to enable HTTPS listener on ALB
+    Default: ''
+
+Conditions:
+  UseHttpsListener: !Not [!Equals ['', !Ref AcmCertificateArn]]
 
 Resources:
   MeetingPoliceVPC:
@@ -394,11 +401,21 @@ Resources:
       Port: 80
       Protocol: HTTP
       DefaultActions:
-        - Type: redirect
-          RedirectConfig:
-            Protocol: HTTPS
-            Port: '443'
-            StatusCode: HTTP_301
+        - Type: forward
+          TargetGroupArn: !Ref MeetingPoliceTargetGroup
+
+  MeetingPoliceHttpsListener:
+    Condition: UseHttpsListener
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref MeetingPoliceALB
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref AcmCertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref MeetingPoliceTargetGroup
 
 Outputs:
   LoadBalancerDNSName:
