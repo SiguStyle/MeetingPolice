@@ -7,6 +7,7 @@ import json
 import uuid
 import wave
 import logging
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -35,9 +36,14 @@ class PocJob:
     next_entry_index: int = 1
     pending_results: dict[str, dict[str, Any]] = field(default_factory=dict)
     processed_result_ids: set[str] = field(default_factory=set)
+    keyword_batch: list[dict[str, Any]] = field(default_factory=list)
+    keyword_batch_started_at: float | None = None
+    keyword_timer_task: asyncio.Task | None = field(default=None, repr=False)
+    keyword_flush_in_progress: bool = False
 
 
 class POCController:
+    KEYWORD_BATCH_SECONDS = 30.0
     def __init__(self, storage_dir: Path | None = None):
         self.storage_dir = storage_dir or Path(__file__).resolve().parents[1] / "data" / "poc"
         self.storage_dir.mkdir(parents=True, exist_ok=True)
@@ -125,7 +131,9 @@ class POCController:
             job.transcripts.append(payload)
             job.next_entry_index = max(job.next_entry_index, idx + 1)
             await job.queue.put({"type": "transcript", "action": "append", "payload": payload})
+            self._queue_keyword_payload(job, payload)
             await asyncio.sleep(1.2)
+        await self._flush_keyword_batch(job, force=True)
         job.status = "completed"
         transcript_path.write_text(json.dumps(job.transcripts, ensure_ascii=False, indent=2), encoding="utf-8")
         await job.queue.put({"type": "complete"})
@@ -251,6 +259,7 @@ class POCController:
             success = True
         finally:
             await self._finalize_pending_results(job)
+            await self._flush_keyword_batch(job, force=True)
             if success:
                 job.status = "completed"
                 await job.queue.put({"type": "complete"})
@@ -312,25 +321,73 @@ class POCController:
         payload = self._public_payload(entry)
         job.transcripts.append(payload)
         await job.queue.put({"type": "transcript", "action": "update", "payload": payload})
-        asyncio.create_task(self._annotate_with_keywords(job, payload))
+        self._queue_keyword_payload(job, payload)
 
     async def _finalize_pending_results(self, job: PocJob) -> None:
         for result_id in list(job.pending_results.keys()):
             await self._finalize_result(job, result_id)
 
-    async def _annotate_with_keywords(self, job: PocJob, payload: dict[str, Any]) -> None:
-        text = payload.get("text", "").strip()
-        if not text:
+    def _queue_keyword_payload(self, job: PocJob, payload: dict[str, Any]) -> None:
+        job.keyword_batch.append(payload)
+        if job.keyword_batch_started_at is None:
+            job.keyword_batch_started_at = time.monotonic()
+            self._schedule_keyword_timer(job)
+
+    def _schedule_keyword_timer(self, job: PocJob) -> None:
+        if job.keyword_timer_task and not job.keyword_timer_task.done():
             return
+        job.keyword_timer_task = asyncio.create_task(self._keyword_timer(job))
+
+    async def _keyword_timer(self, job: PocJob) -> None:
         try:
-            keywords = await asyncio.to_thread(extract_keywords, text)
-        except Exception:
-            self.logger.exception("Keyword extraction failed for job %s entry %s", job.job_id, payload.get("index"))
+            await asyncio.sleep(self.KEYWORD_BATCH_SECONDS)
+            await self._flush_keyword_batch(job)
+        except asyncio.CancelledError:
             return
+
+    def _cancel_keyword_timer(self, job: PocJob) -> None:
+        task = job.keyword_timer_task
+        if task and not task.done():
+            task.cancel()
+        job.keyword_timer_task = None
+
+    async def _flush_keyword_batch(self, job: PocJob, force: bool = False) -> None:
+        if job.keyword_flush_in_progress:
+            return
+        if not job.keyword_batch:
+            if force:
+                self._cancel_keyword_timer(job)
+            return
+        if not force:
+            if job.keyword_batch_started_at is None:
+                return
+            elapsed = time.monotonic() - job.keyword_batch_started_at
+            if elapsed < self.KEYWORD_BATCH_SECONDS:
+                return
+        job.keyword_flush_in_progress = True
+        self._cancel_keyword_timer(job)
+        entries = list(job.keyword_batch)
+        job.keyword_batch = []
+        job.keyword_batch_started_at = None
+        text_segments = [entry.get("text", "").strip() for entry in entries if entry.get("text", "").strip()]
+        if not text_segments:
+            job.keyword_flush_in_progress = False
+            return
+        combined_text = "\n".join(text_segments)
+        try:
+            keywords = await asyncio.to_thread(extract_keywords, combined_text)
+        except Exception:
+            self.logger.exception("Keyword extraction failed for job %s batch", job.job_id)
+            keywords = []
+        finally:
+            job.keyword_flush_in_progress = False
         if not keywords:
             return
-        payload["keywords"] = keywords
-        await job.queue.put({"type": "transcript", "action": "update", "payload": self._public_payload(payload)})
+        for entry in entries:
+            text = entry.get("text", "")
+            entry_keywords = [kw for kw in keywords if kw and kw in text]
+            entry["keywords"] = entry_keywords or keywords
+            await job.queue.put({"type": "transcript", "action": "update", "payload": self._public_payload(entry)})
 
     def _public_payload(self, entry: dict[str, Any]) -> dict[str, Any]:
         return {
