@@ -130,7 +130,7 @@ def classify_transcript_segments(segments: list[dict[str, Any]], client: Any | N
     except (BotoCoreError, ClientError):
         pass
 
-    return _fallback_classification(clean_segments)
+    return []
 
 
 def _coerce_classifications(content: dict[str, Any]) -> list[dict[str, Any]]:

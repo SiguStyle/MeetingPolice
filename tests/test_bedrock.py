@@ -51,7 +51,7 @@ def test_classify_transcript_segments_uses_response():
     assert [item["category"] for item in results] == ["報告", "決定"]
 
 
-def test_classify_transcript_segments_fallback():
+def test_classify_transcript_segments_returns_empty_on_error():
     class ErrorClient:
         def invoke_model(self, **kwargs):
             raise ClientError({"Error": {"Code": "Boom", "Message": "fail"}}, "InvokeModel")
@@ -61,4 +61,4 @@ def test_classify_transcript_segments_fallback():
         {"index": 2, "speaker": "B", "text": "雑談ですが週末はどうでしたか"},
     ]
     results = bedrock_utils.classify_transcript_segments(inputs, client=ErrorClient())
-    assert results[0]["category"] in bedrock_utils.CLASSIFICATION_LABELS
+    assert results == []
