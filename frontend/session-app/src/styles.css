@@ -267,6 +267,28 @@ button {
   color: #475569;
 }
 
+.transcript-item mark {
+  background: #fef9c3;
+  padding: 0 0.15rem;
+  border-radius: 4px;
+}
+
+.keyword-tags {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.keyword-pill {
+  background: #eef2ff;
+  color: #312e81;
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 .analysis-panel ol {
   margin-left: 1.25rem;
   color: #475569;

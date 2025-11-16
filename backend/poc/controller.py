@@ -15,7 +15,7 @@ from amazon_transcribe.auth import StaticCredentialResolver
 from amazon_transcribe.client import TranscribeStreamingClient
 
 from config import get_settings
-from services.bedrock_utils import summarize_transcript
+from services.bedrock_utils import extract_keywords, summarize_transcript
 from services.comprehend_utils import analyze_sentiment
 from utils.auth_aws import get_session
 from utils.time_utils import now_iso
@@ -312,10 +312,25 @@ class POCController:
         payload = self._public_payload(entry)
         job.transcripts.append(payload)
         await job.queue.put({"type": "transcript", "action": "update", "payload": payload})
+        asyncio.create_task(self._annotate_with_keywords(job, payload))
 
     async def _finalize_pending_results(self, job: PocJob) -> None:
         for result_id in list(job.pending_results.keys()):
             await self._finalize_result(job, result_id)
+
+    async def _annotate_with_keywords(self, job: PocJob, payload: dict[str, Any]) -> None:
+        text = payload.get("text", "").strip()
+        if not text:
+            return
+        try:
+            keywords = await asyncio.to_thread(extract_keywords, text)
+        except Exception:
+            self.logger.exception("Keyword extraction failed for job %s entry %s", job.job_id, payload.get("index"))
+            return
+        if not keywords:
+            return
+        payload["keywords"] = keywords
+        await job.queue.put({"type": "transcript", "action": "update", "payload": self._public_payload(payload)})
 
     def _public_payload(self, entry: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -325,4 +340,5 @@ class POCController:
             "result_id": entry.get("result_id"),
             "text": entry["text"],
             "timestamp": entry["timestamp"],
+            "keywords": entry.get("keywords", []),
         }

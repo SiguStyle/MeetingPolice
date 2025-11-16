@@ -28,6 +28,7 @@ export type PocTranscript = {
   result_id?: string;
   text: string;
   timestamp: string;
+  keywords?: string[];
 };
 
 export type PocJobDetail = {

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { Layout } from '../components/Layout';
 import type { PocAnalysisResult, PocTranscript } from '../types';
 import { analyzePocJob, fetchPocJob, startPocRun } from '../services/api';
@@ -14,6 +14,38 @@ const buildWsUrl = (path: string) => {
   const origin = window.location.origin.replace(/^http/, 'ws');
   const base = apiBase.endsWith('/') ? apiBase.slice(0, -1) : apiBase;
   return `${origin}${base}${path}`;
+};
+
+const highlightWithKeywords = (text: string, keywords?: string[]): ReactNode => {
+  if (!keywords || keywords.length === 0) {
+    return text;
+  }
+  const escaped = keywords
+    .map((keyword) => keyword.trim())
+    .filter(Boolean)
+    .map((keyword) => keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (escaped.length === 0) {
+    return text;
+  }
+  const regex = new RegExp(escaped.join('|'), 'gi');
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    const start = match.index;
+    const end = start + match[0].length;
+    if (start > lastIndex) {
+      nodes.push(text.slice(lastIndex, start));
+    }
+    nodes.push(
+      <mark key={`${start}-${end}`}>{text.slice(start, end)}</mark>
+    );
+    lastIndex = end;
+  }
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+  return nodes.length ? nodes : text;
 };
 
 export function PocPage() {
@@ -213,7 +245,19 @@ export function PocPage() {
                 {item.raw_speaker && <span className="pill mono">{item.raw_speaker}</span>}
                 <span>{item.timestamp}</span>
               </header>
-              <p>{item.text}</p>
+              <p>{highlightWithKeywords(item.text, item.keywords)}</p>
+              {item.keywords && item.keywords.length > 0 && (
+                <div className="keyword-tags">
+                  {item.keywords.map((keyword) => (
+                    <span
+                      className="keyword-pill"
+                      key={`${item.result_id ?? `idx-${item.index}`}-${keyword}`}
+                    >
+                      {keyword}
+                    </span>
+                  ))}
+                </div>
+              )}
             </article>
           ))}
           {transcripts.length === 0 && <p className="faded">アップロード後に文字起こしが表示されます。</p>}
