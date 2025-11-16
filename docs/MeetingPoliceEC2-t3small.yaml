@@ -350,7 +350,9 @@ Resources:
               -keyout /home/ubuntu/meetingpolice-selfsigned.key \
               -out /home/ubuntu/meetingpolice-selfsigned.crt \
               -subj "/CN=${ALB_DNS}"
-            echo "Generated self-signed cert for ${ALB_DNS} under /home/ubuntu."
+            aws s3 cp /home/ubuntu/meetingpolice-selfsigned.key s3://mp-ec2data/ssl/meetingpolice-selfsigned.key --region "${AWS_REGION}"
+            aws s3 cp /home/ubuntu/meetingpolice-selfsigned.crt s3://mp-ec2data/ssl/meetingpolice-selfsigned.crt --region "${AWS_REGION}"
+            echo "Generated self-signed cert for ${ALB_DNS} and uploaded to S3."
           else
             echo "ALB DNS not available; skipped self-signed cert generation."
           fi
