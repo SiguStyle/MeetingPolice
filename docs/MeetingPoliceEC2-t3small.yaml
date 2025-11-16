@@ -338,13 +338,8 @@ Resources:
       HealthCheckPath: /
       Matcher:
         HttpCode: '200'
-
-  MeetingPoliceTargetGroupAttachment:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroupAttachment
-    Properties:
-      TargetGroupArn: !Ref MeetingPoliceTargetGroup
-      TargetId: !Ref MeetingPoliceEC2
-      Port: 80
+      Targets:
+        - Id: !Ref MeetingPoliceEC2
 
   MeetingPoliceALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
