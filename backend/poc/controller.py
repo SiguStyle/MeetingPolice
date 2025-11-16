@@ -135,6 +135,7 @@ class POCController:
                 {
                     "job_id": data.get("job_id"),
                     "completed_at": data.get("completed_at"),
+                    "archive_name": data.get("archive_name") or "",
                     "agenda_preview": (data.get("agenda_text") or "")[:80],
                     "transcript_count": len(data.get("transcripts") or []),
                 }
@@ -395,13 +396,15 @@ class POCController:
 
     def _persist_transcripts(self, job: PocJob) -> None:
         try:
+            archive_name = self._suggest_archive_slug(job)
             payload = {
                 "job_id": job.job_id,
                 "agenda_text": job.agenda_text,
                 "completed_at": now_iso(),
                 "transcripts": job.transcripts,
+                "archive_name": archive_name,
             }
-            key = self._archive_key(job.job_id)
+            key = self._build_archive_key(job.job_id, archive_name)
             self.archive_storage.write_json(key, payload)
         except Exception:
             self.logger.exception("Failed to archive transcripts for job %s", job.job_id)
@@ -411,7 +414,34 @@ class POCController:
         return json.loads(raw)
 
     def _archive_key(self, job_id: str) -> str:
-        return job_id if job_id.endswith(".json") else f"poc/{job_id}.json"
+        suffix = f"{job_id}.json"
+        for key in self.archive_storage.list_objects("poc/"):
+            if key.endswith(suffix):
+                return key
+        return f"poc/{job_id}.json"
+
+    def _build_archive_key(self, job_id: str, archive_name: str | None) -> str:
+        slug = archive_name or ""
+        if slug:
+            slug = slug[:40]
+            return f"poc/{slug}-{job_id}.json"
+        return f"poc/{job_id}.json"
+
+    def _suggest_archive_slug(self, job: PocJob) -> str:
+        source = job.agenda_text or ""
+        if not source.strip():
+            for transcript in job.transcripts:
+                text = transcript.get("text", "")
+                if text.strip():
+                    source = text
+                    break
+        if not source.strip():
+            return ""
+        first_line = source.splitlines()[0].strip()
+        cleaned = re.sub(r"[\s　]+", "-", first_line)
+        cleaned = re.sub(r"[^0-9A-Za-zぁ-んァ-ヶ一-龠ー_-]", "", cleaned)
+        cleaned = cleaned.strip("-_")
+        return cleaned[:40]
 
 
 SENTENCE_RE = re.compile(r"[^。！？!?]+[。！？!?]?")

@@ -63,6 +63,7 @@ export type PocArchivedJob = {
   agenda_text: string;
   transcripts: PocTranscript[];
   completed_at: string;
+  archive_name?: string;
 };
 
 export type PocHistoryItem = {
@@ -70,6 +71,7 @@ export type PocHistoryItem = {
   completed_at: string;
   agenda_preview: string;
   transcript_count: number;
+  archive_name?: string;
 };
 
 export type PocAnalysisResult = {

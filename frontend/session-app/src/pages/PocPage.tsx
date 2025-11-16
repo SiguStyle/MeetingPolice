@@ -313,8 +313,9 @@ export function PocPage() {
             {history.map((item) => (
               <article key={item.job_id} className="history-item">
                 <div>
-                  <strong>{item.job_id}</strong>
-                  <p className="label">{item.completed_at || '日時不明'}</p>
+                  <strong>{item.archive_name || item.job_id}</strong>
+                  <p className="label">{item.completed_at || item.job_id}</p>
+                  {item.archive_name && <p className="faded mono">{item.job_id}</p>}
                   <p className="agenda-preview-text">{item.agenda_preview || '（アジェンダなし）'}</p>
                 </div>
                 <div className="history-actions">
@@ -332,6 +333,7 @@ export function PocPage() {
         {historyPreview && (
           <div className="history-preview">
             <p className="label">選択中のアジェンダ</p>
+            {historyPreview.archive_name && <p><strong>{historyPreview.archive_name}</strong></p>}
             <pre>{historyPreview.agenda_text || '（なし）'}</pre>
             <p className="label">文字起こし（抜粋）</p>
             <div className="history-transcripts">
