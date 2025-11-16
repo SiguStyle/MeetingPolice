@@ -163,6 +163,7 @@ Resources:
 
   MeetingPoliceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
+    DependsOn: MeetingPoliceAlbSecurityGroup
     Properties:
       GroupDescription: Allow HTTP/HTTPS only from ALB
       VpcId: !Ref MeetingPoliceVPC
