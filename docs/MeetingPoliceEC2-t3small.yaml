@@ -158,6 +158,14 @@ Resources:
       SubnetId: !Ref MeetingPolicePrivateSubnet
       RouteTableId: !Ref MeetingPolicePrivateRouteTable
 
+  MeetingPoliceDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: mp-ec2data
+      Tags:
+        - Key: Name
+          Value: mp-ec2data
+
   MeetingPoliceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     DependsOn: MeetingPoliceAlbSecurityGroup
