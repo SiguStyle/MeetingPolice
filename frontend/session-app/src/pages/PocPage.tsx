@@ -24,6 +24,7 @@ const CATEGORY_STYLES: Record<PocCategory, string> = {
   質問: 'category-question',
   回答: 'category-answer',
   決定: 'category-decision',
+  コメント: 'category-comment',
   無関係な雑談: 'category-offtopic',
 };
 
@@ -300,7 +301,7 @@ export function PocPage() {
         {classificationLoading && <p className="faded">Bedrock にリクエスト中です…</p>}
         {!classificationLoading && (
           <p className="faded">
-            ボタンを押すと、現在までに確定した文字起こしを Bedrock に送り、カテゴリ（議事進行/報告/提案/相談/質問/回答/決定/無関係な雑談）で色分け表示します。
+            ボタンを押すと、現在までに確定した文字起こしを Bedrock に送り、カテゴリ（議事進行/報告/提案/相談/質問/回答/決定/コメント/無関係な雑談）と議事への適合度(%)を表示します。
           </p>
         )}
         {classifiedSegments.length > 0 && (
@@ -312,6 +313,9 @@ export function PocPage() {
               >
                 <div className="classification-meta">
                   <strong>{segment.speaker}</strong>
+                  <span className="alignment-tag">
+                    適合度 {typeof segment.alignment === 'number' ? `${segment.alignment}%` : '―'}
+                  </span>
                   <span className="category-tag">{segment.category}</span>
                 </div>
                 <p>{segment.text}</p>

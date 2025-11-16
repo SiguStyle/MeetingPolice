@@ -30,13 +30,23 @@ export type PocTranscript = {
   timestamp: string;
 };
 
-export type PocCategory = '議事進行' | '報告' | '提案' | '相談' | '質問' | '回答' | '決定' | '無関係な雑談';
+export type PocCategory =
+  | '議事進行'
+  | '報告'
+  | '提案'
+  | '相談'
+  | '質問'
+  | '回答'
+  | '決定'
+  | 'コメント'
+  | '無関係な雑談';
 
 export type PocClassifiedSegment = {
   index: number;
   speaker: string;
   text: string;
   category: PocCategory;
+  alignment?: number;
 };
 
 export type PocJobDetail = {

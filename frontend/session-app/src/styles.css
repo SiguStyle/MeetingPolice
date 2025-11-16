@@ -303,6 +303,12 @@ button {
   background: rgba(99, 102, 241, 0.15);
 }
 
+.alignment-tag {
+  font-size: 0.8rem;
+  margin-right: 0.5rem;
+  color: #475569;
+}
+
 .classification-row.category-agenda {
   border-color: #2563eb;
   background: #eff6ff;
@@ -336,6 +342,11 @@ button {
 .classification-row.category-decision {
   border-color: #ea580c;
   background: #fff7ed;
+}
+
+.classification-row.category-comment {
+  border-color: #5b21b6;
+  background: #f3e8ff;
 }
 
 .classification-row.category-offtopic {

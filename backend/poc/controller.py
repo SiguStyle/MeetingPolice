@@ -114,7 +114,7 @@ class POCController:
         sentence_segments = self._sentence_segments(job)
         if not sentence_segments:
             raise ValueError("No transcript sentences available yet")
-        classified = await asyncio.to_thread(classify_transcript_segments, sentence_segments)
+        classified = await asyncio.to_thread(classify_transcript_segments, sentence_segments, job.agenda_text)
         if not classified:
             raise RuntimeError("Bedrock classification returned no data")
         job.classified_segments = classified

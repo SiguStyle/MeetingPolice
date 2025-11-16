@@ -125,7 +125,11 @@ def summarize_transcript(meeting_id: str, transcript_text: str, client: Any | No
     return {"meeting_id": meeting_id, "summary": summary_text}
 
 
-def classify_transcript_segments(segments: list[dict[str, Any]], client: Any | None = None) -> list[dict[str, Any]]:
+def classify_transcript_segments(
+    segments: list[dict[str, Any]],
+    agenda_text: str = "",
+    client: Any | None = None,
+) -> list[dict[str, Any]]:
     clean_segments = []
     for segment in segments:
         text = (segment.get("text") or "").strip()
@@ -220,6 +224,10 @@ def classify_transcript_segments(segments: list[dict[str, Any]], client: Any | N
         "\n"
         "出力形式は JSON 配列のみで、各要素は {\"index\":番号,\"category\":\"分類名\"} です。\n"
         "未知のカテゴリは使わず、必ず上記ラベルのいずれか1つを割り当ててください。\n"
+        "各文が議題(アジェンダ)にどれだけ沿っているかも 0〜100% の整数で評価し、\"alignment\" として JSON に含めてください。\n"
+        "アジェンダ概要:\n"
+        f"{(agenda_text or '（アジェンダ未指定）')[:2000]}\n"
+        "\n"
         "最後の出力には JSON 以外の文字は一切含めないでください。\n"
         "\n"
         "以下の文一覧を分類してください:\n"
@@ -261,20 +269,22 @@ def _coerce_classifications(content: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _merge_classifications(segments: list[dict[str, Any]], classified: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    index_to_category = {}
+    index_to_result: dict[int, tuple[str, int]] = {}
     for item in classified:
         idx = item.get("index")
         cat = item.get("category")
+        alignment = item.get("alignment")
         if isinstance(idx, int) and isinstance(cat, str):
-            index_to_category[idx] = cat
+            score = int(alignment) if isinstance(alignment, (int, float)) else 0
+            index_to_result[idx] = (cat, max(0, min(100, score)))
 
     merged: list[dict[str, Any]] = []
     for segment in segments:
         idx = segment["index"]
-        category = index_to_category.get(idx, _guess_category(segment["text"]))
+        category, alignment = index_to_result.get(idx, (_guess_category(segment["text"]), 0))
         if category not in CLASSIFICATION_LABELS:
             category = "無関係な雑談"
-        merged.append({**segment, "category": category})
+        merged.append({**segment, "category": category, "alignment": alignment})
     return merged
 
 
