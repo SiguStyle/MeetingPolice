@@ -1,7 +1,7 @@
-import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Layout } from '../components/Layout';
-import type { PocAnalysisResult, PocTranscript } from '../types';
-import { analyzePocJob, fetchPocJob, startPocRun } from '../services/api';
+import type { PocAnalysisResult, PocClassifiedSegment, PocCategory, PocTranscript } from '../types';
+import { analyzePocJob, classifyPocJob, fetchPocJob, startPocRun } from '../services/api';
 
 const buildWsUrl = (path: string) => {
   const apiBase = import.meta.env.VITE_API_BASE ?? '/api';
@@ -16,36 +16,13 @@ const buildWsUrl = (path: string) => {
   return `${origin}${base}${path}`;
 };
 
-const highlightWithKeywords = (text: string, keywords?: string[]): ReactNode => {
-  if (!keywords || keywords.length === 0) {
-    return text;
-  }
-  const escaped = keywords
-    .map((keyword) => keyword.trim())
-    .filter(Boolean)
-    .map((keyword) => keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  if (escaped.length === 0) {
-    return text;
-  }
-  const regex = new RegExp(escaped.join('|'), 'gi');
-  const nodes: ReactNode[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    const start = match.index;
-    const end = start + match[0].length;
-    if (start > lastIndex) {
-      nodes.push(text.slice(lastIndex, start));
-    }
-    nodes.push(
-      <mark key={`${start}-${end}`}>{text.slice(start, end)}</mark>
-    );
-    lastIndex = end;
-  }
-  if (lastIndex < text.length) {
-    nodes.push(text.slice(lastIndex));
-  }
-  return nodes.length ? nodes : text;
+const CATEGORY_STYLES: Record<PocCategory, string> = {
+  議事進行: 'category-agenda',
+  報告: 'category-report',
+  '相談や質問': 'category-question',
+  回答: 'category-answer',
+  決定: 'category-decision',
+  雑談: 'category-chitchat',
 };
 
 export function PocPage() {
@@ -58,6 +35,8 @@ export function PocPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<PocAnalysisResult | null>(null);
   const [jobAgenda, setJobAgenda] = useState<string>('');
+  const [classifiedSegments, setClassifiedSegments] = useState<PocClassifiedSegment[]>([]);
+  const [classificationLoading, setClassificationLoading] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -92,6 +71,7 @@ export function PocPage() {
       try {
         const detail = await fetchPocJob(jobId);
         setJobAgenda(detail.agenda_text);
+        setClassifiedSegments(detail.classified_segments ?? []);
       } catch (err) {
         console.error(err);
       }
@@ -104,6 +84,7 @@ export function PocPage() {
     setMessage(null);
     setAnalysis(null);
     setJobAgenda('');
+    setClassifiedSegments([]);
     if (!audioFile) {
       setMessage('音声ファイルを選択してください。');
       return;
@@ -163,6 +144,8 @@ export function PocPage() {
           }
           return prev;
         });
+      } else if (data.type === 'classification') {
+        setClassifiedSegments(data.payload as PocClassifiedSegment[]);
       } else if (data.type === 'complete') {
         setStatus('complete');
         setMessage('文字起こしが完了しました。');
@@ -185,6 +168,21 @@ export function PocPage() {
     } catch (err) {
       const text = err instanceof Error ? err.message : '分析 API の呼び出しに失敗しました';
       setMessage(text);
+    }
+  };
+
+  const requestClassification = async () => {
+    if (!jobId) return;
+    setClassificationLoading(true);
+    setMessage(null);
+    try {
+      const result = await classifyPocJob(jobId, classifiedSegments.length > 0);
+      setClassifiedSegments(result.classified_segments ?? []);
+    } catch (err) {
+      const text = err instanceof Error ? err.message : 'Bedrock への分類リクエストに失敗しました';
+      setMessage(text);
+    } finally {
+      setClassificationLoading(false);
     }
   };
 
@@ -245,19 +243,7 @@ export function PocPage() {
                 {item.raw_speaker && <span className="pill mono">{item.raw_speaker}</span>}
                 <span>{item.timestamp}</span>
               </header>
-              <p>{highlightWithKeywords(item.text, item.keywords)}</p>
-              {item.keywords && item.keywords.length > 0 && (
-                <div className="keyword-tags">
-                  {item.keywords.map((keyword) => (
-                    <span
-                      className="keyword-pill"
-                      key={`${item.result_id ?? `idx-${item.index}`}-${keyword}`}
-                    >
-                      {keyword}
-                    </span>
-                  ))}
-                </div>
-              )}
+              <p>{item.text}</p>
             </article>
           ))}
           {transcripts.length === 0 && <p className="faded">アップロード後に文字起こしが表示されます。</p>}
@@ -290,6 +276,45 @@ export function PocPage() {
                 <li key={item}>{item}</li>
               ))}
             </ul>
+          </div>
+        )}
+      </section>
+
+      <section className="panel classification-panel">
+        <div className="panel-header">
+          <div>
+            <p className="label">Bedrock 一括分類結果</p>
+            <h2>{classifiedSegments.length > 0 ? `${classifiedSegments.length} 文` : status === 'complete' ? '分析待ち' : '文字起こし中'}</h2>
+          </div>
+          <button
+            type="button"
+            className="ghost"
+            onClick={requestClassification}
+            disabled={!jobId || classificationLoading}
+          >
+            {classificationLoading ? '分類中…' : '分類を実行'}
+          </button>
+        </div>
+        {classificationLoading && <p className="faded">Bedrock にリクエスト中です…</p>}
+        {!classificationLoading && (
+          <p className="faded">
+            ボタンを押すと、現在までに確定した文字起こしを Bedrock に送り、カテゴリ（議事進行/報告/相談や質問/回答/決定/雑談）で色分け表示します。
+          </p>
+        )}
+        {classifiedSegments.length > 0 && (
+          <div className="classification-grid">
+            {classifiedSegments.map((segment) => (
+              <article
+                key={segment.index}
+                className={`classification-item ${CATEGORY_STYLES[segment.category]}`}
+              >
+                <header>
+                  <strong>{segment.speaker}</strong>
+                  <span className="category-tag">{segment.category}</span>
+                </header>
+                <p>{segment.text}</p>
+              </article>
+            ))}
           </div>
         )}
       </section>

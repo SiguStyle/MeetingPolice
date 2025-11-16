@@ -28,7 +28,15 @@ export type PocTranscript = {
   result_id?: string;
   text: string;
   timestamp: string;
-  keywords?: string[];
+};
+
+export type PocCategory = '議事進行' | '報告' | '相談や質問' | '回答' | '決定' | '雑談';
+
+export type PocClassifiedSegment = {
+  index: number;
+  speaker: string;
+  text: string;
+  category: PocCategory;
 };
 
 export type PocJobDetail = {
@@ -37,6 +45,7 @@ export type PocJobDetail = {
   agenda_text: string;
   audio_filename: string;
   transcripts: PocTranscript[];
+  classified_segments: PocClassifiedSegment[];
 };
 
 export type PocAnalysisResult = {

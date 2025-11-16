@@ -41,6 +41,17 @@ async def analyze_poc_job(job_id: str):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.post("/jobs/{job_id}/classify")
+async def classify_poc_job(job_id: str, refresh: bool = False):
+    try:
+        segments = await controller.classify_job(job_id, refresh=refresh)
+        return {"job_id": job_id, "classified_segments": segments}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.websocket("/ws/{job_id}")
 async def poc_stream(websocket: WebSocket, job_id: str):
     await websocket.accept()
@@ -55,7 +66,6 @@ async def poc_stream(websocket: WebSocket, job_id: str):
         payload = dict(payload)
         payload.setdefault("raw_speaker", payload.get("speaker", "spk_unk"))
         payload.setdefault("result_id", f"historical-{payload.get('index', 0)}")
-        payload.setdefault("keywords", payload.get("keywords", []))
         await websocket.send_json({"type": "transcript", "action": "append", "payload": payload})
     for entry in sorted(job.pending_results.values(), key=lambda item: item["index"]):
         payload = {
@@ -65,9 +75,10 @@ async def poc_stream(websocket: WebSocket, job_id: str):
             "text": entry["text"],
             "timestamp": entry["timestamp"],
             "result_id": entry.get("result_id"),
-            "keywords": entry.get("keywords", []),
         }
         await websocket.send_json({"type": "transcript", "action": "append", "payload": payload})
+    if job.classified_segments:
+        await websocket.send_json({"type": "classification", "payload": job.classified_segments})
     if job.status == "completed":
         await websocket.send_json({"type": "complete"})
         await websocket.close()

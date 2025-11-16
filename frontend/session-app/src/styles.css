@@ -267,26 +267,69 @@ button {
   color: #475569;
 }
 
-.transcript-item mark {
-  background: #fef9c3;
-  padding: 0 0.15rem;
-  border-radius: 4px;
+.classification-panel .classification-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
 }
 
-.keyword-tags {
-  margin-top: 0.5rem;
+.classification-item {
+  border-radius: 12px;
+  padding: 0.8rem;
+  border-left: 6px solid #cbd5f5;
+  background: #f8fafc;
+}
+
+.classification-item header {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
 }
 
-.keyword-pill {
-  background: #eef2ff;
-  color: #312e81;
+.classification-item p {
+  margin: 0;
+  color: #0f172a;
+}
+
+.category-tag {
   border-radius: 999px;
-  padding: 0.2rem 0.6rem;
+  padding: 0.25rem 0.6rem;
   font-size: 0.75rem;
   font-weight: 600;
+  color: #0f172a;
+  background: rgba(99, 102, 241, 0.15);
+}
+
+.classification-item.category-agenda {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.classification-item.category-report {
+  border-color: #15803d;
+  background: #ecfdf5;
+}
+
+.classification-item.category-question {
+  border-color: #ca8a04;
+  background: #fefce8;
+}
+
+.classification-item.category-answer {
+  border-color: #0d9488;
+  background: #ecfeff;
+}
+
+.classification-item.category-decision {
+  border-color: #ea580c;
+  background: #fff7ed;
+}
+
+.classification-item.category-chitchat {
+  border-color: #475569;
+  background: #f8fafc;
 }
 
 .analysis-panel ol {

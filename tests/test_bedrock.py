@@ -32,20 +32,33 @@ def test_create_embedding_fallback_on_error():
     assert len(vector) == 16
 
 
-def test_extract_keywords_prefers_bedrock_json():
-    class KeywordClient:
+def test_classify_transcript_segments_uses_response():
+    class ClassifyClient:
         def invoke_model(self, **kwargs):
-            body = {"keywords": ["議題整理", "次のアクション"]}
+            body = {
+                "classifications": [
+                    {"index": 1, "category": "報告"},
+                    {"index": 2, "category": "決定"},
+                ]
+            }
             return {"body": BytesIO(json.dumps(body).encode("utf-8"))}
 
-    keywords = bedrock_utils.extract_keywords("議題をまとめます", client=KeywordClient())
-    assert keywords == ["議題整理", "次のアクション"]
+    inputs = [
+        {"index": 1, "speaker": "A", "text": "進捗を共有します"},
+        {"index": 2, "speaker": "B", "text": "この内容で決定します"},
+    ]
+    results = bedrock_utils.classify_transcript_segments(inputs, client=ClassifyClient())
+    assert [item["category"] for item in results] == ["報告", "決定"]
 
 
-def test_extract_keywords_fallback_on_error():
+def test_classify_transcript_segments_fallback():
     class ErrorClient:
         def invoke_model(self, **kwargs):
             raise ClientError({"Error": {"Code": "Boom", "Message": "fail"}}, "InvokeModel")
 
-    keywords = bedrock_utils.extract_keywords("見積り 調整 共有", client=ErrorClient(), max_keywords=2)
-    assert keywords == ["見積り", "調整"]
+    inputs = [
+        {"index": 1, "speaker": "A", "text": "次の議題に移りましょう"},
+        {"index": 2, "speaker": "B", "text": "雑談ですが週末はどうでしたか"},
+    ]
+    results = bedrock_utils.classify_transcript_segments(inputs, client=ErrorClient())
+    assert results[0]["category"] in bedrock_utils.CLASSIFICATION_LABELS

@@ -1,4 +1,4 @@
-import type { MeetingSession, PocAnalysisResult, PocJobDetail } from '../types';
+import type { MeetingSession, PocAnalysisResult, PocClassifiedSegment, PocJobDetail } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api';
 
@@ -80,4 +80,15 @@ export async function fetchPocJob(jobId: string): Promise<PocJobDetail> {
 
 export async function analyzePocJob(jobId: string): Promise<PocAnalysisResult> {
   return request<PocAnalysisResult>(`/poc/jobs/${jobId}/analyze`, { method: 'POST' });
+}
+
+export async function classifyPocJob(
+  jobId: string,
+  refresh = false,
+): Promise<{ job_id: string; classified_segments: PocClassifiedSegment[] }> {
+  const query = refresh ? '?refresh=true' : '';
+  return request<{ job_id: string; classified_segments: PocClassifiedSegment[] }>(
+    `/poc/jobs/${jobId}/classify${query}`,
+    { method: 'POST' },
+  );
 }
