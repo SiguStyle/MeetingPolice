@@ -17,25 +17,155 @@ Parameters:
     Type: AWS::EC2::Image::Id
     Description: Ubuntu Server 22.04 LTS (Jammy) AMI ID (ap-northeast-1)
     Default: ami-0244ef75e95122fd9
-  VpcId:
-    Type: AWS::EC2::VPC::Id
-    Description: VPC ID hosting MeetingPolice resources
-  InstanceSubnetId:
-    Type: AWS::EC2::Subnet::Id
-    Description: Subnet ID for the EC2 instance (private or protected subnet)
-  AlbSubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
-    Description: Two public subnets for the Application Load Balancer
+  VpcCidrBlock:
+    Type: String
+    Description: CIDR block for MeetingPolice VPC
+    Default: 10.20.0.0/16
+  PublicSubnet1Cidr:
+    Type: String
+    Description: CIDR block for the first public subnet (ALB/NAT)
+    Default: 10.20.1.0/24
+  PublicSubnet2Cidr:
+    Type: String
+    Description: CIDR block for the second public subnet (ALB)
+    Default: 10.20.2.0/24
+  PrivateSubnetCidr:
+    Type: String
+    Description: CIDR block for the private application subnet (EC2)
+    Default: 10.20.11.0/24
   AcmCertificateArn:
     Type: String
     Description: ACM certificate ARN used by the HTTPS listener (warning occurs when accessing ALB DNS directly)
 
 Resources:
+  MeetingPoliceVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidrBlock
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: MeetingPolice-VPC
+
+  MeetingPoliceInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: MeetingPolice-IGW
+
+  MeetingPoliceIgwAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MeetingPoliceVPC
+      InternetGatewayId: !Ref MeetingPoliceInternetGateway
+
+  MeetingPolicePublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MeetingPoliceVPC
+      CidrBlock: !Ref PublicSubnet1Cidr
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: MeetingPolice-Public-A
+
+  MeetingPolicePublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MeetingPoliceVPC
+      CidrBlock: !Ref PublicSubnet2Cidr
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: MeetingPolice-Public-B
+
+  MeetingPolicePublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MeetingPoliceVPC
+      Tags:
+        - Key: Name
+          Value: MeetingPolice-Public-RT
+
+  MeetingPolicePublicRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref MeetingPolicePublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref MeetingPoliceInternetGateway
+    DependsOn: MeetingPoliceIgwAttachment
+
+  MeetingPolicePublicSubnetAAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref MeetingPolicePublicSubnetA
+      RouteTableId: !Ref MeetingPolicePublicRouteTable
+
+  MeetingPolicePublicSubnetBAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref MeetingPolicePublicSubnetB
+      RouteTableId: !Ref MeetingPolicePublicRouteTable
+
+  MeetingPoliceNatEip:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: MeetingPolice-NAT-EIP
+
+  MeetingPoliceNatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt MeetingPoliceNatEip.AllocationId
+      SubnetId: !Ref MeetingPolicePublicSubnetA
+      Tags:
+        - Key: Name
+          Value: MeetingPolice-NAT
+    DependsOn: MeetingPoliceIgwAttachment
+
+  MeetingPolicePrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MeetingPoliceVPC
+      CidrBlock: !Ref PrivateSubnetCidr
+      MapPublicIpOnLaunch: false
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: MeetingPolice-Private-App
+
+  MeetingPolicePrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MeetingPoliceVPC
+      Tags:
+        - Key: Name
+          Value: MeetingPolice-Private-RT
+
+  MeetingPolicePrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref MeetingPolicePrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref MeetingPoliceNatGateway
+
+  MeetingPolicePrivateSubnetAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref MeetingPolicePrivateSubnet
+      RouteTableId: !Ref MeetingPolicePrivateRouteTable
+
   MeetingPoliceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Allow HTTP/HTTPS only from ALB
-      VpcId: !Ref VpcId
+      VpcId: !Ref MeetingPoliceVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
@@ -50,7 +180,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Public access for the Application Load Balancer
-      VpcId: !Ref VpcId
+      VpcId: !Ref MeetingPoliceVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
@@ -85,7 +215,7 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t3.small
-      SubnetId: !Ref InstanceSubnetId
+      SubnetId: !Ref MeetingPolicePrivateSubnet
       KeyName: !Ref KeyPairName
       IamInstanceProfile: !Ref MeetingPoliceInstanceProfile
       SecurityGroupIds: [!Ref MeetingPoliceSecurityGroup]
@@ -201,20 +331,29 @@ Resources:
   MeetingPoliceTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      VpcId: !Ref VpcId
+      VpcId: !Ref MeetingPoliceVPC
       Port: 80
       Protocol: HTTP
       TargetType: instance
       HealthCheckPath: /
-      Targets:
-        - Id: !Ref MeetingPoliceEC2
+      Matcher:
+        HttpCode: '200'
+
+  MeetingPoliceTargetGroupAttachment:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroupAttachment
+    Properties:
+      TargetGroupArn: !Ref MeetingPoliceTargetGroup
+      TargetId: !Ref MeetingPoliceEC2
+      Port: 80
 
   MeetingPoliceALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
       Name: meetingpolice-alb
       Scheme: internet-facing
-      Subnets: !Ref AlbSubnetIds
+      Subnets:
+        - !Ref MeetingPolicePublicSubnetA
+        - !Ref MeetingPolicePublicSubnetB
       SecurityGroups:
         - !Ref MeetingPoliceAlbSecurityGroup
       LoadBalancerAttributes:
