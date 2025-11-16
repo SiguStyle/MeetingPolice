@@ -262,190 +262,200 @@ export function PocPage() {
 
   return (
     <Layout title="MeetingPolice PoC" subtitle="アジェンダと音声をアップロードし、リアルタイム文字起こしを確認できます。">
-      <section className="panel poc-upload">
-        <h2>PoC: アジェンダ &amp; TTS 音声のアップロード</h2>
-        <p>音声は Transcribe Streaming (デモ版) で処理され、結果が右のパネルにリアルタイムで届きます。</p>
-        <form className="poc-form" onSubmit={handleStart}>
-          <label className="upload-field">
-            <span>アジェンダファイル（任意）</span>
-            <input type="file" accept=".txt,.md,.doc,.docx,.pdf" onChange={(event) => setAgendaFile(event.target.files?.[0] ?? null)} />
-            {agendaFile && <small>{agendaFile.name}</small>}
-          </label>
-          <label className="upload-field">
-            <span>音声ファイル（必須）</span>
-            <input type="file" accept="audio/*" onChange={(event) => setAudioFile(event.target.files?.[0] ?? null)} required />
-            {audioFile && <small>{audioFile.name}</small>}
-          </label>
-          <button type="submit" disabled={status === 'streaming'}>
-            {status === 'streaming' ? '文字起こし中…' : '文字起こしを開始'}
-          </button>
-        </form>
-        {message && <p className="info-text">{message}</p>}
-      {jobId && (
-        <div className="job-meta">
-            <p className="label">Job ID</p>
-            <code>{jobId}</code>
-            <p className="label">ステータス</p>
-            <span className={`pill ${status}`}>{status}</span>
-          </div>
-        )}
-        {audioPreviewUrl && (
-          <div className="audio-preview">
-            <p className="label">アップロード音声</p>
-            <audio ref={audioRef} src={audioPreviewUrl} controls />
-          </div>
-        )}
-      </section>
+      <div className="poc-columns">
+        <div className="poc-left">
+          <section className="panel poc-upload">
+            <h2>PoC: アジェンダ &amp; TTS 音声のアップロード</h2>
+            <p>音声は Transcribe Streaming (デモ版) で処理され、結果が右のパネルにリアルタイムで届きます。</p>
+            <form className="poc-form" onSubmit={handleStart}>
+              <label className="upload-field">
+                <span>アジェンダファイル（任意）</span>
+                <input type="file" accept=".txt,.md,.doc,.docx,.pdf" onChange={(event) => setAgendaFile(event.target.files?.[0] ?? null)} />
+                {agendaFile && <small>{agendaFile.name}</small>}
+              </label>
+              <label className="upload-field">
+                <span>音声ファイル（必須）</span>
+                <input type="file" accept="audio/*" onChange={(event) => setAudioFile(event.target.files?.[0] ?? null)} required />
+                {audioFile && <small>{audioFile.name}</small>}
+              </label>
+              <button type="submit" disabled={status === 'streaming'}>
+                {status === 'streaming' ? '文字起こし中…' : '文字起こしを開始'}
+              </button>
+            </form>
+            {message && <p className="info-text">{message}</p>}
+          {jobId && (
+            <div className="job-meta">
+                <p className="label">Job ID</p>
+                <code>{jobId}</code>
+                <p className="label">ステータス</p>
+                <span className={`pill ${status}`}>{status}</span>
+              </div>
+            )}
+            {audioPreviewUrl && (
+              <div className="audio-preview">
+                <p className="label">アップロード音声</p>
+                <audio ref={audioRef} src={audioPreviewUrl} controls />
+              </div>
+            )}
+          </section>
 
-      <section className="panel history-panel">
-        <div className="panel-header">
-          <div>
-            <p className="label">過去の文字起こし</p>
-            <h2>{history.length} 件</h2>
-          </div>
-          <button type="button" className="ghost" onClick={refreshHistory} disabled={historyLoading}>
-            {historyLoading ? '更新中…' : '履歴を更新'}
-          </button>
-        </div>
-        {history.length === 0 && <p className="faded">これまでのアーカイブはまだありません。</p>}
-        {history.length > 0 && (
-          <div className="history-list">
-            {history.map((item) => (
-              <article key={item.job_id} className="history-item">
-                <div>
-                  <strong>{item.archive_name || item.job_id}</strong>
-                  <p className="label">{item.completed_at || item.job_id}</p>
-                  {item.archive_name && <p className="faded mono">{item.job_id}</p>}
-                  <p className="agenda-preview-text">{item.agenda_preview || '（アジェンダなし）'}</p>
-                </div>
-                <div className="history-actions">
-                  <button type="button" className="ghost" onClick={() => loadHistoryPreview(item.job_id)}>
-                    表示
-                  </button>
-                  <button type="button" onClick={() => classifyHistory(item.job_id)}>
-                    分類
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-        {historyPreview && (
-          <div className="history-preview">
-            <p className="label">選択中のアジェンダ</p>
-            {historyPreview.archive_name && <p><strong>{historyPreview.archive_name}</strong></p>}
-            <pre>{historyPreview.agenda_text || '（なし）'}</pre>
-            <p className="label">文字起こし（抜粋）</p>
-            <div className="history-transcripts">
-              {historyPreview.transcripts.slice(0, 5).map((item) => (
-                <p key={item.index}>
-                  <strong>{item.speaker}:</strong> {item.text}
-                </p>
-              ))}
-              {historyPreview.transcripts.length > 5 && <p>…ほか {historyPreview.transcripts.length - 5} 行</p>}
+          <section className="panel analysis-panel">
+            <h2>Bedrock / Comprehend への渡し方</h2>
+            <ol>
+              <li>`GET /api/poc/jobs/&#123;job_id&#125;` を呼び出し、アジェンダ文本と transcript 配列を取得します。</li>
+              <li>`POST /api/poc/jobs/&#123;job_id&#125;/analyze` のコードを参考に、Bedrock へは transcript の結合テキストを、Comprehend へは議題ごとのサマリを送ります。</li>
+              <li>分析結果は `/docs/POC_ANALYSIS.md` に記載のフローでレポートへ反映できます。</li>
+            </ol>
+            {jobAgenda && (
+              <div className="agenda-preview">
+                <p className="label">このジョブのアジェンダ抜粋</p>
+                <pre>{jobAgenda || '（未指定）'}</pre>
+              </div>
+            )}
+            {analysis && (
+              <div className="analysis-result">
+                <h3>デモ分析結果</h3>
+                <p className="label">Bedrock 要約</p>
+                <p>{analysis.summary.summary}</p>
+                <p className="label">Comprehend Sentiment</p>
+                <pre>{JSON.stringify(analysis.sentiment, null, 2)}</pre>
+                <p className="label">ガイダンス</p>
+                <ul>
+                  {analysis.guidance.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+
+          <section className="panel history-panel">
+            <div className="panel-header">
+              <div>
+                <p className="label">過去の文字起こし</p>
+                <h2>{history.length} 件</h2>
+              </div>
+              <button type="button" className="ghost" onClick={refreshHistory} disabled={historyLoading}>
+                {historyLoading ? '更新中…' : '履歴を更新'}
+              </button>
             </div>
-          </div>
-        )}
-      </section>
-
-      <section className="panel transcript-panel">
-        <div className="panel-header">
-          <div>
-            <p className="label">リアルタイム文字起こし</p>
-            <h2>{transcripts.length} 行</h2>
-          </div>
-          {status === 'complete' && (
-            <button type="button" className="ghost" onClick={runAnalysis}>
-              Bedrock / Comprehend 連携を見る
-            </button>
-          )}
-        </div>
-        <div className="transcript-feed">
-          {transcripts.map((item) => (
-            <article key={item.timestamp + item.index} className="transcript-item">
-              <header>
-                <strong>{item.speaker}</strong>
-                {item.raw_speaker && <span className="pill mono">{item.raw_speaker}</span>}
-                <span>{item.timestamp}</span>
-              </header>
-              <p>{item.text}</p>
-            </article>
-          ))}
-          {transcripts.length === 0 && <p className="faded">アップロード後に文字起こしが表示されます。</p>}
-        </div>
-      </section>
-
-      <section className="panel analysis-panel">
-        <h2>Bedrock / Comprehend への渡し方</h2>
-        <ol>
-          <li>`GET /api/poc/jobs/&#123;job_id&#125;` を呼び出し、アジェンダ文本と transcript 配列を取得します。</li>
-          <li>`POST /api/poc/jobs/&#123;job_id&#125;/analyze` のコードを参考に、Bedrock へは transcript の結合テキストを、Comprehend へは議題ごとのサマリを送ります。</li>
-          <li>分析結果は `/docs/POC_ANALYSIS.md` に記載のフローでレポートへ反映できます。</li>
-        </ol>
-        {jobAgenda && (
-          <div className="agenda-preview">
-            <p className="label">このジョブのアジェンダ抜粋</p>
-            <pre>{jobAgenda || '（未指定）'}</pre>
-          </div>
-        )}
-        {analysis && (
-          <div className="analysis-result">
-            <h3>デモ分析結果</h3>
-            <p className="label">Bedrock 要約</p>
-            <p>{analysis.summary.summary}</p>
-            <p className="label">Comprehend Sentiment</p>
-            <pre>{JSON.stringify(analysis.sentiment, null, 2)}</pre>
-            <p className="label">ガイダンス</p>
-            <ul>
-              {analysis.guidance.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
-
-      <section className="panel classification-panel">
-        <div className="panel-header">
-          <div>
-            <p className="label">Bedrock 一括分類結果</p>
-            <h2>{classifiedSegments.length > 0 ? `${classifiedSegments.length} 文` : status === 'complete' ? '分析待ち' : '文字起こし中'}</h2>
-          </div>
-          <button
-            type="button"
-            className="ghost"
-            onClick={requestClassification}
-            disabled={!jobId || classificationLoading}
-          >
-            {classificationLoading ? '分類中…' : '分類を実行'}
-          </button>
-        </div>
-        {classificationLoading && <p className="faded">Bedrock にリクエスト中です…</p>}
-        {!classificationLoading && (
-          <p className="faded">
-            ボタンを押すと、現在までに確定した文字起こしを Bedrock に送り、カテゴリ（議事進行/報告/提案/相談/質問/回答/決定/コメント/無関係な雑談）と議事への適合度(%)を表示します。
-          </p>
-        )}
-        {classifiedSegments.length > 0 && (
-          <div className="classification-list">
-            {classifiedSegments.map((segment) => (
-              <article
-                key={segment.index}
-                className={`classification-row ${CATEGORY_STYLES[segment.category]}`}
-              >
-                <div className="classification-meta">
-                  <strong>{segment.speaker}</strong>
-                  <span className="alignment-tag">
-                    適合度 {typeof segment.alignment === 'number' ? `${segment.alignment}%` : '―'}
-                  </span>
-                  <span className="category-tag">{segment.category}</span>
+            {history.length === 0 && <p className="faded">これまでのアーカイブはまだありません。</p>}
+            {history.length > 0 && (
+              <div className="history-list">
+                {history.map((item) => (
+                  <article key={item.job_id} className="history-item">
+                    <div>
+                      <strong>{item.archive_name || item.job_id}</strong>
+                      <p className="label">{item.completed_at || item.job_id}</p>
+                      {item.archive_name && <p className="faded mono">{item.job_id}</p>}
+                      <p className="agenda-preview-text">{item.agenda_preview || '（アジェンダなし）'}</p>
+                    </div>
+                    <div className="history-actions">
+                      <button type="button" className="ghost" onClick={() => loadHistoryPreview(item.job_id)}>
+                        表示
+                      </button>
+                      <button type="button" onClick={() => classifyHistory(item.job_id)}>
+                        分類
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+            {historyPreview && (
+              <div className="history-preview">
+                <p className="label">選択中のアジェンダ</p>
+                {historyPreview.archive_name && (
+                  <p>
+                    <strong>{historyPreview.archive_name}</strong>
+                  </p>
+                )}
+                <pre>{historyPreview.agenda_text || '（なし）'}</pre>
+                <p className="label">文字起こし（抜粋）</p>
+                <div className="history-transcripts">
+                  {historyPreview.transcripts.slice(0, 5).map((item) => (
+                    <p key={item.index}>
+                      <strong>{item.speaker}:</strong> {item.text}
+                    </p>
+                  ))}
+                  {historyPreview.transcripts.length > 5 && <p>…ほか {historyPreview.transcripts.length - 5} 行</p>}
                 </div>
-                <p>{segment.text}</p>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
+              </div>
+            )}
+          </section>
+        </div>
+
+        <div className="poc-right">
+          <section className="panel transcript-panel">
+            <div className="panel-header">
+              <div>
+                <p className="label">リアルタイム文字起こし</p>
+                <h2>{transcripts.length} 行</h2>
+              </div>
+              {status === 'complete' && (
+                <button type="button" className="ghost" onClick={runAnalysis}>
+                  Bedrock / Comprehend 連携を見る
+                </button>
+              )}
+            </div>
+            <div className="transcript-feed">
+              {transcripts.map((item) => (
+                <article key={item.timestamp + item.index} className="transcript-item">
+                  <header>
+                    <strong>{item.speaker}</strong>
+                    {item.raw_speaker && <span className="pill mono">{item.raw_speaker}</span>}
+                    <span>{item.timestamp}</span>
+                  </header>
+                  <p>{item.text}</p>
+                </article>
+              ))}
+              {transcripts.length === 0 && <p className="faded">アップロード後に文字起こしが表示されます。</p>}
+            </div>
+          </section>
+
+          <section className="panel classification-panel">
+            <div className="panel-header">
+              <div>
+                <p className="label">Bedrock 一括分類結果</p>
+                <h2>{classifiedSegments.length > 0 ? `${classifiedSegments.length} 文` : status === 'complete' ? '分析待ち' : '文字起こし中'}</h2>
+              </div>
+              <button
+                type="button"
+                className="ghost"
+                onClick={requestClassification}
+                disabled={!jobId || classificationLoading}
+              >
+                {classificationLoading ? '分類中…' : '分類を実行'}
+              </button>
+            </div>
+            {classificationLoading && <p className="faded">Bedrock にリクエスト中です…</p>}
+            {!classificationLoading && (
+              <p className="faded">
+                ボタンを押すと、現在までに確定した文字起こしを Bedrock に送り、カテゴリ（議事進行/報告/提案/相談/質問/回答/決定/コメント/無関係な雑談）と議事への適合度(%)を表示します。
+              </p>
+            )}
+            {classifiedSegments.length > 0 && (
+              <div className="classification-list">
+                {classifiedSegments.map((segment) => (
+                  <article
+                    key={segment.index}
+                    className={`classification-row ${CATEGORY_STYLES[segment.category]}`}
+                  >
+                    <div className="classification-meta">
+                      <strong>{segment.speaker}</strong>
+                      <span className="alignment-tag">
+                        適合度 {typeof segment.alignment === 'number' ? `${segment.alignment}%` : '―'}
+                      </span>
+                      <span className="category-tag">{segment.category}</span>
+                    </div>
+                    <p>{segment.text}</p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
     </Layout>
   );
 }
