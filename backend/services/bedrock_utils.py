@@ -35,6 +35,65 @@ def _load_json_body(response: dict[str, Any]) -> dict[str, Any]:
         return {"outputText": raw.decode("utf-8")}
 
 
+def _model_uses_messages(model_id: str) -> bool:
+    return "claude-3" in (model_id or "").lower()
+
+
+def _invoke_text_model(prompt: str, max_tokens: int, temperature: float, client: Any | None = None) -> dict[str, Any]:
+    settings = get_settings()
+    model_id = settings.bedrock_model_id
+    if _model_uses_messages(model_id):
+        payload = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": prompt,
+                        }
+                    ],
+                }
+            ],
+        }
+    else:
+        payload = {
+            "prompt": prompt,
+            "maxTokens": max_tokens,
+            "temperature": temperature,
+        }
+
+    response = _bedrock_client(client).invoke_model(
+        modelId=model_id,
+        contentType="application/json",
+        accept="application/json",
+        body=json.dumps(payload).encode("utf-8"),
+    )
+    return _load_json_body(response)
+
+
+def _extract_text_from_content(content: dict[str, Any]) -> str:
+    for key in ("outputText", "completion", "response"):
+        value = content.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    message_content = content.get("content")
+    if isinstance(message_content, list):
+        pieces: list[str] = []
+        for item in message_content:
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            if isinstance(text, str) and text.strip():
+                pieces.append(text.strip())
+        if pieces:
+            return "\n".join(pieces)
+    return ""
+
+
 def create_embedding(text: str, client: Any | None = None) -> list[float]:
     settings = get_settings()
     payload = {"inputText": text}
@@ -56,27 +115,10 @@ def create_embedding(text: str, client: Any | None = None) -> list[float]:
 
 
 def summarize_transcript(meeting_id: str, transcript_text: str, client: Any | None = None) -> dict[str, Any]:
-    settings = get_settings()
     prompt = f"以下は会議ID {meeting_id} の議事録です。日本語で簡潔に要約してください。\n{transcript_text[:4000]}"
-    payload = {
-        "prompt": prompt,
-        "maxTokens": 256,
-        "temperature": 0.3,
-    }
     try:
-        response = _bedrock_client(client).invoke_model(
-            modelId=settings.bedrock_model_id,
-            contentType="application/json",
-            accept="application/json",
-            body=json.dumps(payload).encode("utf-8"),
-        )
-        content = _load_json_body(response)
-        summary_text = (
-            content.get("outputText")
-            or content.get("completion")
-            or content.get("response")
-            or json.dumps(content)
-        )
+        content = _invoke_text_model(prompt, max_tokens=256, temperature=0.3, client=client)
+        summary_text = _extract_text_from_content(content) or json.dumps(content)
     except (BotoCoreError, ClientError):
         summary_text = f"[mock-summary] {prompt[:200]}"
 
@@ -101,7 +143,6 @@ def classify_transcript_segments(segments: list[dict[str, Any]], client: Any | N
     if not clean_segments:
         return []
 
-    settings = get_settings()
     prompt = (
         "あなたは日本語の議事録を文単位で分類するアシスタントです。\n"
         "各文を次のカテゴリのうち1つに必ず割り当ててください:\n"
@@ -111,19 +152,8 @@ def classify_transcript_segments(segments: list[dict[str, Any]], client: Any | N
         "以下の文一覧を分類してください:\n"
         f"{json.dumps(clean_segments, ensure_ascii=False)}"
     )
-    payload = {
-        "prompt": prompt,
-        "maxTokens": 512,
-        "temperature": 0.2,
-    }
     try:
-        response = _bedrock_client(client).invoke_model(
-            modelId=settings.bedrock_model_id,
-            contentType="application/json",
-            accept="application/json",
-            body=json.dumps(payload).encode("utf-8"),
-        )
-        content = _load_json_body(response)
+        content = _invoke_text_model(prompt, max_tokens=512, temperature=0.2, client=client)
         parsed = _coerce_classifications(content)
         if parsed:
             return _merge_classifications(clean_segments, parsed)
@@ -137,14 +167,8 @@ def _coerce_classifications(content: dict[str, Any]) -> list[dict[str, Any]]:
     candidates = content.get("classifications")
     if isinstance(candidates, list):
         return candidates
-    for key in ("outputText", "completion", "response"):
-        raw = content.get(key)
-        if not raw:
-            continue
-        if isinstance(raw, str):
-            raw = raw.strip()
-        if not raw:
-            continue
+    raw = _extract_text_from_content(content)
+    if raw:
         try:
             parsed = json.loads(raw)
             if isinstance(parsed, list):
@@ -157,7 +181,7 @@ def _coerce_classifications(content: dict[str, Any]) -> list[dict[str, Any]]:
                 try:
                     return [json.loads(match) for match in matches]
                 except json.JSONDecodeError:
-                    continue
+                    pass
     return []
 
 
