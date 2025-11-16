@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  MeetingPolice HTTPS (self-signed) + GitHub pull ready
+  MeetingPolice HTTPS via ALB + GitHub pull ready
   FastAPI + Nginx + React frontend stack (t3.small)
 
 Parameters:
@@ -17,17 +17,49 @@ Parameters:
     Type: AWS::EC2::Image::Id
     Description: Ubuntu Server 22.04 LTS (Jammy) AMI ID (ap-northeast-1)
     Default: ami-0244ef75e95122fd9
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID hosting MeetingPolice resources
+  InstanceSubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet ID for the EC2 instance (private or protected subnet)
+  AlbSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Two public subnets for the Application Load Balancer
+  AllowedSshCidr:
+    Type: String
+    Description: CIDR block allowed to SSH to the instance
+    Default: 0.0.0.0/0
+  AcmCertificateArn:
+    Type: String
+    Description: ACM certificate ARN used by the HTTPS listener (warning occurs when accessing ALB DNS directly)
 
 Resources:
   MeetingPoliceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Allow SSH, HTTP, and HTTPS
+      GroupDescription: Allow SSH from trusted CIDR and HTTP/HTTPS only from ALB
+      VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: 0.0.0.0/0
+          CidrIp: !Ref AllowedSshCidr
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref MeetingPoliceAlbSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref MeetingPoliceAlbSecurityGroup
+
+  MeetingPoliceAlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public access for the Application Load Balancer
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
@@ -61,6 +93,7 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t3.small
+      SubnetId: !Ref InstanceSubnetId
       KeyName: !Ref KeyPairName
       IamInstanceProfile: !Ref MeetingPoliceInstanceProfile
       SecurityGroupIds: [!Ref MeetingPoliceSecurityGroup]
@@ -76,7 +109,7 @@ Resources:
 
           # ---- Basic setup ----
           sudo apt update -y
-          sudo apt install -y git nginx python3 python3-venv python3-pip curl openssl snapd
+          sudo apt install -y git nginx python3 python3-venv python3-pip curl snapd
           # ---- Install Node.js 20 LTS (supports Vite build) ----
           curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
           sudo apt install -y nodejs
@@ -113,28 +146,11 @@ Resources:
           # ---- Frontend: build admin-app (as ubuntu) ----
           sudo -u ubuntu bash -lc "cd $PROJECT_ROOT/frontend/admin-app && npm install && npm run build"
 
-
-          # ---- Generate self-signed SSL certificate ----
-          sudo mkdir -p /etc/ssl/meetingpolice
-          sudo openssl req -x509 -nodes -days 825 -newkey rsa:2048 \
-            -subj "/C=JP/ST=Tokyo/L=Tokyo/O=MeetingPolice/CN=localhost" \
-            -keyout /etc/ssl/meetingpolice/server.key \
-            -out /etc/ssl/meetingpolice/server.crt
-
-          # ---- Nginx configuration ----
+          # ---- Nginx configuration (HTTP only, ALB terminates TLS) ----
           sudo tee /etc/nginx/sites-available/meetingpolice > /dev/null <<'EOF'
           server {
               listen 80;
               server_name _;
-              return 301 https://$host$request_uri;
-          }
-
-          server {
-              listen 443 ssl;
-              server_name _;
-
-              ssl_certificate /etc/ssl/meetingpolice/server.crt;
-              ssl_certificate_key /etc/ssl/meetingpolice/server.key;
 
               location / {
                   root /home/ubuntu/MeetingPolice/frontend/session-app/dist;
@@ -188,9 +204,57 @@ Resources:
           sudo chown -R ubuntu:ubuntu $PROJECT_ROOT
           echo "MeetingPolice (t3.small) setup complete."
     Metadata:
-      Comment: EC2 sets up HTTPS FastAPI + Nginx from GitHub (t3.small)
+      Comment: EC2 sets up FastAPI + Nginx from GitHub (t3.small)
 
-  MeetingPoliceEIP:
-    Type: AWS::EC2::EIP
+  MeetingPoliceTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      InstanceId: !Ref MeetingPoliceEC2
+      VpcId: !Ref VpcId
+      Port: 80
+      Protocol: HTTP
+      TargetType: instance
+      HealthCheckPath: /
+      Targets:
+        - Id: !Ref MeetingPoliceEC2
+
+  MeetingPoliceALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: meetingpolice-alb
+      Scheme: internet-facing
+      Subnets: !Ref AlbSubnetIds
+      SecurityGroups:
+        - !Ref MeetingPoliceAlbSecurityGroup
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '60'
+
+  MeetingPoliceHttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref MeetingPoliceALB
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: '443'
+            StatusCode: HTTP_301
+
+  MeetingPoliceHttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref MeetingPoliceALB
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref AcmCertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref MeetingPoliceTargetGroup
+
+Outputs:
+  LoadBalancerDNSName:
+    Description: DNS name to access MeetingPolice via the ALB
+    Value: !GetAtt MeetingPoliceALB.DNSName
