@@ -18,6 +18,7 @@ from amazon_transcribe.client import TranscribeStreamingClient
 from config import get_settings
 from services.bedrock_utils import classify_transcript_segments, summarize_transcript
 from services.comprehend_utils import analyze_sentiment
+from services.s3_storage import S3Storage
 from utils.auth_aws import get_session
 from utils.time_utils import now_iso
 
@@ -46,6 +47,7 @@ class POCController:
         self.jobs: dict[str, PocJob] = {}
         self.settings = get_settings()
         self.logger = logging.getLogger(__name__)
+        self.archive_storage = S3Storage(bucket="meetingpolice-test")
 
     async def start_transcription(self, agenda_text: str, audio_filename: str, audio_bytes: bytes) -> str:
         job_id = uuid.uuid4().hex[:12]
@@ -118,8 +120,45 @@ class POCController:
         if not classified:
             raise RuntimeError("Bedrock classification returned no data")
         job.classified_segments = classified
-        if classified:
-            await job.queue.put({"type": "classification", "payload": classified})
+        await job.queue.put({"type": "classification", "payload": classified})
+        return classified
+
+    def list_archived_jobs(self, limit: int = 20) -> list[dict[str, Any]]:
+        keys = [key for key in self.archive_storage.list_objects("poc/") if key.endswith(".json")]
+        items: list[dict[str, Any]] = []
+        for key in sorted(keys, reverse=True):
+            try:
+                data = self._load_archived_job(key)
+            except (FileNotFoundError, json.JSONDecodeError):
+                continue
+            items.append(
+                {
+                    "job_id": data.get("job_id"),
+                    "completed_at": data.get("completed_at"),
+                    "agenda_preview": (data.get("agenda_text") or "")[:80],
+                    "transcript_count": len(data.get("transcripts") or []),
+                }
+            )
+            if len(items) >= limit:
+                break
+        return items
+
+    def get_archived_job(self, job_id: str) -> dict[str, Any]:
+        data = self._load_archived_job(self._archive_key(job_id))
+        if not data:
+            raise KeyError(job_id)
+        return data
+
+    async def classify_archived_job(self, job_id: str) -> list[dict[str, Any]]:
+        data = self.get_archived_job(job_id)
+        transcripts = data.get("transcripts") or []
+        agenda_text = data.get("agenda_text") or ""
+        sentence_segments = _sentence_segments_from_transcripts(transcripts)
+        if not sentence_segments:
+            raise ValueError("No transcript sentences available yet")
+        classified = await asyncio.to_thread(classify_transcript_segments, sentence_segments, agenda_text)
+        if not classified:
+            raise RuntimeError("Bedrock classification returned no data")
         return classified
 
     async def _process_audio(self, job: PocJob, audio_bytes: bytes) -> None:
@@ -150,6 +189,7 @@ class POCController:
             await asyncio.sleep(1.2)
         job.status = "completed"
         transcript_path.write_text(json.dumps(job.transcripts, ensure_ascii=False, indent=2), encoding="utf-8")
+        self._persist_transcripts(job)
         await job.queue.put({"type": "complete"})
 
     def _build_script(self, job: PocJob) -> list[str]:
@@ -275,6 +315,7 @@ class POCController:
             await self._finalize_pending_results(job)
             if success:
                 job.status = "completed"
+                self._persist_transcripts(job)
                 await job.queue.put({"type": "complete"})
                 self.logger.info("Transcribe stream completed job_id=%s total_segments=%s", job.job_id, len(job.transcripts))
 
@@ -350,28 +391,27 @@ class POCController:
         }
 
     def _sentence_segments(self, job: PocJob) -> list[dict[str, Any]]:
-        segments: list[dict[str, Any]] = []
-        idx = 1
-        for transcript in job.transcripts:
-            speaker = transcript.get("speaker", "")
-            sentences = _split_sentences(transcript.get("text", ""))
-            for sentence in sentences:
-                segments.append(
-                    {
-                        "index": idx,
-                        "speaker": speaker,
-                        "text": sentence,
-                        "context_before": "",
-                        "context_after": "",
-                    }
-                )
-                idx += 1
-        for i, segment in enumerate(segments):
-            if i > 0:
-                segment["context_before"] = segments[i - 1]["text"]
-            if i + 1 < len(segments):
-                segment["context_after"] = segments[i + 1]["text"]
-        return segments
+        return _sentence_segments_from_transcripts(job.transcripts)
+
+    def _persist_transcripts(self, job: PocJob) -> None:
+        try:
+            payload = {
+                "job_id": job.job_id,
+                "agenda_text": job.agenda_text,
+                "completed_at": now_iso(),
+                "transcripts": job.transcripts,
+            }
+            key = self._archive_key(job.job_id)
+            self.archive_storage.write_json(key, payload)
+        except Exception:
+            self.logger.exception("Failed to archive transcripts for job %s", job.job_id)
+
+    def _load_archived_job(self, key: str) -> dict[str, Any]:
+        raw = self.archive_storage.read_text(key)
+        return json.loads(raw)
+
+    def _archive_key(self, job_id: str) -> str:
+        return job_id if job_id.endswith(".json") else f"poc/{job_id}.json"
 
 
 SENTENCE_RE = re.compile(r"[^。！？!?]+[。！？!?]?")
@@ -385,3 +425,28 @@ def _split_sentences(text: str) -> list[str]:
     if not sentences and text.strip():
         sentences = [text.strip()]
     return sentences
+
+
+def _sentence_segments_from_transcripts(transcripts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    segments: list[dict[str, Any]] = []
+    idx = 1
+    for transcript in transcripts:
+        speaker = transcript.get("speaker", "")
+        sentences = _split_sentences(transcript.get("text", ""))
+        for sentence in sentences:
+            segments.append(
+                {
+                    "index": idx,
+                    "speaker": speaker,
+                    "text": sentence,
+                    "context_before": "",
+                    "context_after": "",
+                }
+            )
+            idx += 1
+    for i, segment in enumerate(segments):
+        if i > 0:
+            segment["context_before"] = segments[i - 1]["text"]
+        if i + 1 < len(segments):
+            segment["context_after"] = segments[i + 1]["text"]
+    return segments

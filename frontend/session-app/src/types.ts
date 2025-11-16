@@ -58,6 +58,20 @@ export type PocJobDetail = {
   classified_segments: PocClassifiedSegment[];
 };
 
+export type PocArchivedJob = {
+  job_id: string;
+  agenda_text: string;
+  transcripts: PocTranscript[];
+  completed_at: string;
+};
+
+export type PocHistoryItem = {
+  job_id: string;
+  completed_at: string;
+  agenda_preview: string;
+  transcript_count: number;
+};
+
 export type PocAnalysisResult = {
   job_id: string;
   agenda_text: string;

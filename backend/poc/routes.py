@@ -54,6 +54,32 @@ async def classify_poc_job(job_id: str, refresh: bool = False):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+@router.get("/history")
+async def list_poc_history():
+    return controller.list_archived_jobs()
+
+
+@router.get("/history/{job_id}")
+async def get_archived_job(job_id: str):
+    try:
+        return controller.get_archived_job(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません") from exc
+
+
+@router.post("/history/{job_id}/classify")
+async def classify_archived_job(job_id: str):
+    try:
+        segments = await controller.classify_archived_job(job_id)
+        return {"job_id": job_id, "classified_segments": segments}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 @router.websocket("/ws/{job_id}")
 async def poc_stream(websocket: WebSocket, job_id: str):
     await websocket.accept()

@@ -354,6 +354,59 @@ button {
   background: #f8fafc;
 }
 
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.75rem;
+  gap: 1rem;
+}
+
+.history-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.history-preview {
+  margin-top: 1rem;
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 0.75rem;
+}
+
+.history-preview pre {
+  white-space: pre-wrap;
+  background: rgba(15, 23, 42, 0.05);
+  padding: 0.5rem;
+  border-radius: 6px;
+}
+
+.history-transcripts {
+  background: #fff;
+  border-radius: 8px;
+  padding: 0.5rem;
+  border: 1px solid #e2e8f0;
+}
+
+.history-transcripts p {
+  margin: 0.25rem 0;
+}
+
+.agenda-preview-text {
+  margin: 0.25rem 0 0;
+  color: #475569;
+  max-width: 420px;
+  font-size: 0.9rem;
+}
+
 .analysis-panel ol {
   margin-left: 1.25rem;
   color: #475569;

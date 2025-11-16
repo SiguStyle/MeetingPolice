@@ -1,7 +1,22 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Layout } from '../components/Layout';
-import type { PocAnalysisResult, PocClassifiedSegment, PocCategory, PocTranscript } from '../types';
-import { analyzePocJob, classifyPocJob, fetchPocJob, startPocRun } from '../services/api';
+import type {
+  PocAnalysisResult,
+  PocClassifiedSegment,
+  PocCategory,
+  PocTranscript,
+  PocArchivedJob,
+  PocHistoryItem,
+} from '../types';
+import {
+  analyzePocJob,
+  classifyArchivedJob,
+  classifyPocJob,
+  fetchArchivedJob,
+  fetchPocHistory,
+  fetchPocJob,
+  startPocRun,
+} from '../services/api';
 
 const buildWsUrl = (path: string) => {
   const apiBase = import.meta.env.VITE_API_BASE ?? '/api';
@@ -40,6 +55,9 @@ export function PocPage() {
   const [jobAgenda, setJobAgenda] = useState<string>('');
   const [classifiedSegments, setClassifiedSegments] = useState<PocClassifiedSegment[]>([]);
   const [classificationLoading, setClassificationLoading] = useState(false);
+  const [history, setHistory] = useState<PocHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyPreview, setHistoryPreview] = useState<PocArchivedJob | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -81,6 +99,21 @@ export function PocPage() {
     };
     fetchJob();
   }, [jobId, status]);
+
+  useEffect(() => {
+    const loadHistory = async () => {
+      setHistoryLoading(true);
+      try {
+        const items = await fetchPocHistory();
+        setHistory(items);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setHistoryLoading(false);
+      }
+    };
+    loadHistory();
+  }, []);
 
   const handleStart = async (event: FormEvent) => {
     event.preventDefault();
@@ -189,6 +222,44 @@ export function PocPage() {
     }
   };
 
+  const refreshHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const items = await fetchPocHistory();
+      setHistory(items);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const loadHistoryPreview = async (id: string) => {
+    try {
+      const data = await fetchArchivedJob(id);
+      setHistoryPreview(data);
+      setMessage(`過去ジョブ ${id} を読み込みました。`);
+    } catch (err) {
+      const text = err instanceof Error ? err.message : '過去の文字起こし取得に失敗しました';
+      setMessage(text);
+    }
+  };
+
+  const classifyHistory = async (id: string) => {
+    setClassificationLoading(true);
+    setMessage(null);
+    try {
+      const result = await classifyArchivedJob(id);
+      setClassifiedSegments(result.classified_segments ?? []);
+      setMessage(`過去ジョブ ${id} の分類結果を表示しています。`);
+    } catch (err) {
+      const text = err instanceof Error ? err.message : '過去データの分類に失敗しました';
+      setMessage(text);
+    } finally {
+      setClassificationLoading(false);
+    }
+  };
+
   return (
     <Layout title="MeetingPolice PoC" subtitle="アジェンダと音声をアップロードし、リアルタイム文字起こしを確認できます。">
       <section className="panel poc-upload">
@@ -222,6 +293,55 @@ export function PocPage() {
           <div className="audio-preview">
             <p className="label">アップロード音声</p>
             <audio ref={audioRef} src={audioPreviewUrl} controls />
+          </div>
+        )}
+      </section>
+
+      <section className="panel history-panel">
+        <div className="panel-header">
+          <div>
+            <p className="label">過去の文字起こし</p>
+            <h2>{history.length} 件</h2>
+          </div>
+          <button type="button" className="ghost" onClick={refreshHistory} disabled={historyLoading}>
+            {historyLoading ? '更新中…' : '履歴を更新'}
+          </button>
+        </div>
+        {history.length === 0 && <p className="faded">これまでのアーカイブはまだありません。</p>}
+        {history.length > 0 && (
+          <div className="history-list">
+            {history.map((item) => (
+              <article key={item.job_id} className="history-item">
+                <div>
+                  <strong>{item.job_id}</strong>
+                  <p className="label">{item.completed_at || '日時不明'}</p>
+                  <p className="agenda-preview-text">{item.agenda_preview || '（アジェンダなし）'}</p>
+                </div>
+                <div className="history-actions">
+                  <button type="button" className="ghost" onClick={() => loadHistoryPreview(item.job_id)}>
+                    表示
+                  </button>
+                  <button type="button" onClick={() => classifyHistory(item.job_id)}>
+                    分類
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+        {historyPreview && (
+          <div className="history-preview">
+            <p className="label">選択中のアジェンダ</p>
+            <pre>{historyPreview.agenda_text || '（なし）'}</pre>
+            <p className="label">文字起こし（抜粋）</p>
+            <div className="history-transcripts">
+              {historyPreview.transcripts.slice(0, 5).map((item) => (
+                <p key={item.index}>
+                  <strong>{item.speaker}:</strong> {item.text}
+                </p>
+              ))}
+              {historyPreview.transcripts.length > 5 && <p>…ほか {historyPreview.transcripts.length - 5} 行</p>}
+            </div>
           </div>
         )}
       </section>

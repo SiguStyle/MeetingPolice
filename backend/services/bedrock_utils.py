@@ -9,7 +9,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from config import get_settings
 from utils.auth_aws import get_session
 
-CLASSIFICATION_LABELS = ["議事進行", "報告", "提案", "相談", "質問", "回答", "決定", "無関係な雑談"]
+CLASSIFICATION_LABELS = ["議事進行", "報告", "提案", "相談", "質問", "回答", "決定", "コメント", "無関係な雑談"]
 
 
 def _bedrock_client(client: Any | None = None):
@@ -305,6 +305,7 @@ def _guess_category(text: str) -> str:
         ("質問", ["?", "か?", "教えて", "でしょうか", "質問"]),
         ("回答", ["回答", "説明します", "対応します", "お答え", "承知"]),
         ("決定", ["決定", "合意", "確定", "承認", "決めましょう"]),
+        ("コメント", ["ありがとうございます", "すみません", "助かります", "うれしい", "心強い"]),
         ("無関係な雑談", ["雑談", "世間話", "余談", "週末", "天気", "ランチ"]),
     ]
     for label, keywords in cues:
