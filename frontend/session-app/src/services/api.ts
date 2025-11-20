@@ -116,3 +116,20 @@ export async function classifyArchivedJob(
     { method: 'POST' },
   );
 }
+
+// PoC Satomin API
+export async function startPocSatominRun(formData: FormData): Promise<{ job_id: string }> {
+  return request<{ job_id: string }>('/poc_satomin/start', { method: 'POST', body: formData }, false);
+}
+
+export async function fetchPocSatominJob(jobId: string): Promise<PocJobDetail> {
+  return request<PocJobDetail>(`/poc_satomin/jobs/${jobId}`);
+}
+
+export async function fetchPocSatominHistory(): Promise<PocHistoryItem[]> {
+  return request<PocHistoryItem[]>(`/poc_satomin/history`);
+}
+
+export async function fetchArchivedSatominJob(jobId: string): Promise<PocArchivedJob> {
+  return request<PocArchivedJob>(`/poc_satomin/history/${jobId}`);
+}
