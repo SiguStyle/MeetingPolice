@@ -8,25 +8,27 @@ MeetingPolice は、会議参加者にリアルタイムの音声解析結果を
   - FastAPI アプリ本体。`main.py` でルータを束ね、`config.py` が環境変数を一括管理します。
   - `session/`: 参加者向け API。Vonage トークン発行と WebSocket 経由のトランスクリプト配信を担当。
   - `admin/`: 管理者向け API。会議 CRUD と Bedrock を使った要約生成を実装。
+  - `poc/`: `/api/poc` エンドポイント群。アジェンダと音声ファイルを受け取り、Amazon Transcribe Streaming（失敗時はモック）で文字起こしを行い、Bedrock/Comprehend 連携や S3 へのアーカイブ、履歴参照・分類 API を提供します。
   - `services/`: AWS / Vonage など外部サービスとの連携層。`bedrock_utils.py`, `s3_storage.py`, `transcribe_stream.py` などが boto3 クライアントをラップし、接続不能時はローカルフォールバックを提供します。
   - `models/`: Pydantic スキーマ（会議、アジェンダ、サマリーなど）。
   - `utils/`: 認証・ログ・時刻処理等の共通ユーティリティ。
   - `data/`: JSON ベースの簡易永続化領域（git には `.gitkeep` のみ含む想定）。
 - `frontend/`
-  - `session-app/`: 参加者 UI。参加者グリッド、感情メトリクス、ミュート操作などを表示し、将来的に WebSocket からのライブ分析結果を描画します。
+  - `session-app/`: 参加者 UI。参加者グリッドやライブメトリクスに加え、`src/pages/PocPage.tsx` で `/poc` ワークフローを提供し、WebSocket 文字起こし・Bedrock 分析・アーカイブ確認を一画面で体験できます。
   - `admin-app/`: 管理 UI。会議一覧／作成フォーム／要約パネルを備え、Bedrock/S3 から取得したデータを可視化します。
-  - どちらも `src/components`, `src/hooks`, `src/services`, `src/pages` など共通構成で整理しています。
-- `docs/`: 仕様メモ (`AGENTS.md`)、API 定義補足 (`API_SPEC.md`)、アーキテクチャ図など。
+  - どちらも `src/components`, `src/hooks`, `src/services`, `src/pages` など共通構成で整理しています。詳しくは `frontend/README.md` を参照してください。
+- `docs/`: EC2 立ち上げ手順 (`MeetingPoliceEC2-SetupGuide.md`)、CloudFormation テンプレート (`MeetingPoliceEC2-t3small.yaml`)、PoC 分析フロー (`POC_ANALYSIS.md`)、デモ用 SSML (`meeting_part1.ssml`) などの補足資料。
 - `scripts/`: `start_dev.sh`（FastAPI + 2 つの Vite Dev Server を起動）、`deploy.sh`、`.env` テンプレート生成、S3 同期ツールなど開発・運用スクリプト群。
 - `nginx/`: 静的配信と FastAPI へのリバースプロキシを定義した `default.conf` を格納。
-- `tests/`: pytest ベースのテスト。Bedrock/S3/Transcribe 連携をモックで検証する `test_bedrock.py` `test_s3_storage.py` `test_transcribe.py` などを配置。
+- `tests/`: pytest ベースのテスト。`test_bedrock.py` や `test_s3_storage.py`、`test_transcribe.py` で AWS 連携クライアントのフォールバックを検証しつつ、`test_api_*.py` で FastAPI ルータの体裁を保つスモークテストを用意しています。
 - `secrets/`: Vonage RSA 秘密鍵等の機密ファイルを置くディレクトリ（`.gitignore` 済み）。
 
 ## 主要技術と連携ポイント
 
-- **AWS 連携**: `config.py` / `.env` でリージョンや資格情報を設定し、`services/` 層で boto3 クライアントを生成。S3/Bedrock/Transcribe/Comprehend すべてにローカルフォールバックを用意しているため、ネットワークなしでも開発できます。
+- **AWS 連携**: `config.py` / `.env` でリージョンや資格情報を設定し、`services/` 層で boto3 クライアントを生成。S3/Bedrock/Transcribe/Comprehend すべてにローカルフォールバックを用意しているため、ネットワークなしでも開発できます。PoC では `amazon-transcribe` SDK を直接使い、PCM チャンクを WebSocket にストリーミングしています。
 - **Vonage Video**: `services/vonage_client.py` が JWT を発行し、`session` ルートから払い出します。鍵未設定時はモックトークンが返るため UI の結線確認が容易です。
-- **永続化**: `services/repository.py` が会議メタデータを `backend/data/meetings.json` に保存し、サマリー／トランスクリプトは `services/s3_storage.py` 経由で S3 またはローカル `backend/data/s3/` に書き込みます。
+- **永続化**: `services/repository.py` が会議メタデータを `backend/data/meetings.json` に保存し、サマリー／トランスクリプトは `services/s3_storage.py` 経由で S3 またはローカル `backend/data/s3/` に書き込みます。`poc` ジョブも同ラッパーを介して `poc/*.json` としてアーカイブされ、履歴 API やフロントエンドから再利用できます。
+- **PoC ワークフロー**: `frontend/session-app` の `/poc` ページと `backend/poc` API がセットで動作し、アジェンダ＋音声アップロード → Amazon Transcribe Streaming → WebSocket 文字起こし → Bedrock 要約/分類 → Comprehend 感情分析 → S3 への保存までを模擬できます。履歴から再取得したデータに対しても Bedrock 分類を再実行できます。
 
 ## 開発手順
 
@@ -43,9 +45,11 @@ MeetingPolice は、会議参加者にリアルタイムの音声解析結果を
 
 ### PoC ページ（/poc）
 
-- `session-app` には `/poc` ルートを追加しており、アジェンダファイルと TTS 音声をアップロードして擬似 Transcribe Streaming を体験できます。
-- `backend/poc/` 配下の API は `job_id` 単位でファイルを保存し、`ws://.../api/poc/ws/{job_id}` からリアルタイムに文字起こしを返します。
-- 文字起こし完了後は `POST /api/poc/jobs/{job_id}/analyze` を呼ぶと Bedrock (summarize) / Comprehend (sentiment) を組み合わせた例が実行されます。詳細は `docs/POC_ANALYSIS.md` を参照してください。
+- `frontend/session-app/src/pages/PocPage.tsx` からアクセスでき、アジェンダと音声をアップロードして Amazon Transcribe Streaming（またはフォールバックのモックデータ）を体験できます。
+- `backend/poc/` 配下の API は `job_id` 単位でファイルを保存し、`ws://.../api/poc/ws/{job_id}` からリアルタイムに文字起こしを返します。確定した transcript は `services/S3Storage` 経由で `poc/*.json` としてアーカイブされます。
+- 文字起こし完了後は `POST /api/poc/jobs/{job_id}/analyze` を呼ぶと Bedrock (summarize) / Comprehend (sentiment) の組み合わせをデモできます。同様に `POST /api/poc/jobs/{job_id}/classify` で議事カテゴリ分類を実行し、結果が WebSocket にもブロードキャストされます。
+- 過去データは `GET /api/poc/history` / `GET /api/poc/history/{job_id}` で取得でき、`/history/{job_id}/classify` で Bedrock 分類の再計算も可能です。フロントエンドの履歴パネルからこれらの API にアクセスできます。
+- 詳細ワークフローは `docs/POC_ANALYSIS.md` にまとめています。
 
 ### 代表的な利用フロー
 
@@ -56,8 +60,9 @@ MeetingPolice は、会議参加者にリアルタイムの音声解析結果を
 
 ## ドキュメント
 
-- `docs/AGENTS.md`: 音声解析エージェントの仕様メモ
-- `docs/API_SPEC.md`: REST / WebSocket API の補足説明
-- `docs/ARCHITECTURE_OVERVIEW.png`, `docs/SEQUENCE_DIAGRAM.png`: 全体設計・処理シーケンス図
+- `docs/MeetingPoliceEC2-SetupGuide.md`: CloudFormation テンプレートを使って EC2 上に MeetingPolice を構築する手順。
+- `docs/MeetingPoliceEC2-t3small.yaml`: Ubuntu 22.04 / FastAPI / Nginx / Vite をセットアップするテンプレート。
+- `docs/POC_ANALYSIS.md`: `/poc` で作成したジョブに対して Bedrock / Comprehend 解析を行う手順や推奨フロー。
+- `docs/meeting_part1.ssml`: PoC で利用できるサンプル SSML（音声合成スクリプト）。
 
 この README を参照することで、リポジトリ全体の構成と各フォルダの役割、主要な連携ポイントが把握できます。
