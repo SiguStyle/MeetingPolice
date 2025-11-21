@@ -49,6 +49,7 @@ class POCController:
         self.logger = logging.getLogger(__name__)
         self.archive_storage = S3Storage(bucket="meetingpolice-test")
 
+#文字起こしジョブの開始
     async def start_transcription(self, agenda_text: str, audio_filename: str, audio_bytes: bytes) -> str:
         job_id = uuid.uuid4().hex[:12]
         job = PocJob(job_id=job_id, agenda_text=agenda_text, audio_filename=audio_filename)
@@ -104,7 +105,7 @@ class POCController:
             "transcript_sample": job.transcripts[:5],
             "guidance": guidance,
         }
-
+#会議の文字起こし結果を自動で分類する.各発言が「質問」「報告」「提案」などのどれに当てはまるかをAI（Bedrock）に判定させる
     async def classify_job(self, job_id: str, refresh: bool = False) -> list[dict[str, Any]]:
         job = self.get_job(job_id)
         if not job:
@@ -122,7 +123,25 @@ class POCController:
         job.classified_segments = classified
         await job.queue.put({"type": "classification", "payload": classified})
         return classified
+#最終結果が出たら分析開始する
+async def classify_realtime(self, job_id: str, text: str, speaker: str) -> dict[str, Any]:
+    """リアルタイムで1つの発言を簡易分析"""
+    job = self.get_job(job_id)
+    if not job:
+        raise KeyError(job_id)
+    # キーワードベースの簡易分類
+    category = _guess_category(text)
+    result = {
+        "text": text,
+        "speaker": speaker,
+        "category": category,
+        "method": "realtime"  # リアルタイム分析であることを示す
+    }
+    # クライアントに通知
+    await job.queue.put({"type": "realtime_classification", "payload": result})
+    return result
 
+#過去の会議記録の一覧を取得する機能
     def list_archived_jobs(self, limit: int = 20) -> list[dict[str, Any]]:
         keys = [key for key in self.archive_storage.list_objects("poc/") if key.endswith(".json")]
         items: list[dict[str, Any]] = []
@@ -170,7 +189,7 @@ class POCController:
             self.logger.exception("Transcribe streaming failed for job %s, fallback to mock data", job.job_id)
             job.transcripts.clear()
             await self._simulate_stream(job)
-
+#AWS Transcribeが失敗したとき
     async def _simulate_stream(self, job: PocJob) -> None:
         script = self._build_script(job)
         job_dir = self._job_dir(job.job_id)
@@ -216,7 +235,7 @@ class POCController:
 
     def _job_dir(self, job_id: str) -> Path:
         return self.storage_dir / job_id
-
+#音声ファイルをAWS Transcribeが理解できる形式に変換する処理
     def _prepare_pcm(self, audio_bytes: bytes) -> tuple[bytes, int]:
         try:
             with wave.open(io.BytesIO(audio_bytes), "rb") as wav:
@@ -244,6 +263,7 @@ class POCController:
 
         return raw, sample_rate
 
+# AWS Transcribe Streamingを使ったリアルタイム音声認識
     async def _run_transcribe_stream(self, job: PocJob, pcm_bytes: bytes, sample_rate: int) -> None:
         session = get_session()
         credentials = session.get_credentials()
@@ -361,6 +381,8 @@ class POCController:
             if entry["text"] == text and entry["speaker"] == speaker_label:
                 if is_final:
                     await self._finalize_result(job, result_id)
+                    # 最終結果が出たら、すぐに分析開始
+                    asyncio.create_task(self.classify_realtime(job.job_id, text, speaker_label))
                 return
             entry["text"] = text
             entry["speaker"] = speaker_label
@@ -368,6 +390,8 @@ class POCController:
             await job.queue.put({"type": "transcript", "action": "update", "payload": self._public_payload(entry)})
         if is_final:
             await self._finalize_result(job, result_id)
+            # 最終結果が出たら、すぐに分析開始
+            asyncio.create_task(self.classify_realtime(job.job_id, text, speaker_label))
 
     async def _finalize_result(self, job: PocJob, result_id: str) -> None:
         entry = job.pending_results.pop(result_id, None)
