@@ -16,7 +16,7 @@ from amazon_transcribe.auth import StaticCredentialResolver
 from amazon_transcribe.client import TranscribeStreamingClient
 
 from config import get_settings
-from services.bedrock_utils import classify_transcript_segments, summarize_transcript
+from services.bedrock_utils import classify_transcript_segments, summarize_transcript, _guess_category
 from services.comprehend_utils import analyze_sentiment
 from services.s3_storage import S3Storage
 from utils.auth_aws import get_session
@@ -124,22 +124,33 @@ class POCController:
         await job.queue.put({"type": "classification", "payload": classified})
         return classified
 #最終結果が出たら分析開始する
-async def classify_realtime(self, job_id: str, text: str, speaker: str) -> dict[str, Any]:
-    """リアルタイムで1つの発言を簡易分析"""
+async def classify_realtime(self, job_id: str, text: str, speaker: str, index: int) -> dict[str, Any]:
+    """リアルタイムで1つの発言を簡易分析（ハイブリッド方式）"""
     job = self.get_job(job_id)
     if not job:
         raise KeyError(job_id)
-    # キーワードベースの簡易分類
-    category = _guess_category(text)
-    result = {
+    
+    # ステップ1: キーワードベースの簡易分類（即座に返す）
+    category_quick = _guess_category(text)
+    alignment_quick = self._calculate_alignment(text, job.agenda_text)
+    
+    result_quick = {
+        "index": index,
         "text": text,
         "speaker": speaker,
-        "category": category,
-        "method": "realtime"  # リアルタイム分析であることを示す
+        "category": category_quick,
+        "alignment": alignment_quick,
+        "method": "keyword",  # キーワードベース
+        "is_final": False  # まだ確定じゃない
     }
-    # クライアントに通知
-    await job.queue.put({"type": "realtime_classification", "payload": result})
-    return result
+    
+    # すぐにクライアントに通知
+    await job.queue.put({"type": "realtime_classification", "payload": result_quick})
+    
+    # ステップ2: バックグラウンドでBedrockに送信（非同期）
+    asyncio.create_task(self._classify_with_bedrock(job, text, speaker, index))
+    
+    return result_quick
 
 #過去の会議記録の一覧を取得する機能
     def list_archived_jobs(self, limit: int = 20) -> list[dict[str, Any]]:
@@ -382,7 +393,7 @@ async def classify_realtime(self, job_id: str, text: str, speaker: str) -> dict[
                 if is_final:
                     await self._finalize_result(job, result_id)
                     # 最終結果が出たら、すぐに分析開始
-                    asyncio.create_task(self.classify_realtime(job.job_id, text, speaker_label))
+                    asyncio.create_task(self.classify_realtime(job.job_id, text, speaker_label, entry["index"]))
                 return
             entry["text"] = text
             entry["speaker"] = speaker_label
@@ -391,7 +402,7 @@ async def classify_realtime(self, job_id: str, text: str, speaker: str) -> dict[
         if is_final:
             await self._finalize_result(job, result_id)
             # 最終結果が出たら、すぐに分析開始
-            asyncio.create_task(self.classify_realtime(job.job_id, text, speaker_label))
+            asyncio.create_task(self.classify_realtime(job.job_id, text, speaker_label, entry["index"]))
 
     async def _finalize_result(self, job: PocJob, result_id: str) -> None:
         entry = job.pending_results.pop(result_id, None)
@@ -466,6 +477,89 @@ async def classify_realtime(self, job_id: str, text: str, speaker: str) -> dict[
         cleaned = re.sub(r"[^0-9A-Za-zぁ-んァ-ヶ一-龠ー_-]", "", cleaned)
         cleaned = cleaned.strip("-_")
         return cleaned[:40]
+
+    async def _classify_with_bedrock(self, job: PocJob, text: str, speaker: str, index: int) -> None:
+        """Bedrockで高精度な分析を実行（バックグラウンド）"""
+        try:
+            # 文脈を取得（前後の発言）
+            context_before = ""
+            context_after = ""
+            for transcript in job.transcripts:
+                if transcript.get("index") == index - 1:
+                    context_before = transcript.get("text", "")
+                elif transcript.get("index") == index + 1:
+                    context_after = transcript.get("text", "")
+            
+            # Bedrockで分析
+            segment = {
+                "index": index,
+                "speaker": speaker,
+                "text": text,
+                "context_before": context_before,
+                "context_after": context_after,
+            }
+            
+            # classify_transcript_segmentsを使って分析
+            classified = await asyncio.to_thread(
+                classify_transcript_segments,
+                [segment],
+                job.agenda_text
+            )
+            
+            if classified and len(classified) > 0:
+                result = classified[0]
+                category_ai = result.get("category", _guess_category(text))
+                alignment_ai = result.get("alignment", 0)
+                
+                result_ai = {
+                    "index": index,
+                    "text": text,
+                    "speaker": speaker,
+                    "category": category_ai,
+                    "alignment": alignment_ai,
+                    "method": "bedrock",  # AI分析
+                    "is_final": True  # 確定
+                }
+                
+                # 更新をクライアントに通知
+                await job.queue.put({"type": "realtime_classification", "action": "update", "payload": result_ai})
+                
+                self.logger.info(f"Bedrock分析完了: {speaker} - {text} → [{category_ai}] {alignment_ai}%")
+        
+        except Exception as e:
+            self.logger.exception(f"Bedrock分析失敗: {e}")
+            # エラーが出てもキーワードベースの結果は残るので問題なし
+
+    def _calculate_alignment(self, text: str, agenda_text: str) -> int:
+        """発言とアジェンダの一致度を0-100で計算（キーワードベース）"""
+        if not agenda_text or not agenda_text.strip():
+            return 0  # アジェンダがなければ0%
+        
+        # アジェンダから重要なキーワードを抽出（名詞っぽい単語）
+        agenda_keywords = set()
+        for line in agenda_text.splitlines():
+            line = line.strip(" -*•\t0123456789.。")  # 箇条書き記号や番号を除去
+            if not line:
+                continue
+            # 2文字以上の単語を抽出（簡易的）
+            words = [w for w in re.findall(r'[ぁ-んァ-ヶ一-龠ー]+', line) if len(w) >= 2]
+            agenda_keywords.update(words)
+        
+        if not agenda_keywords:
+            return 0
+        
+        # 発言に含まれるキーワードの数をカウント
+        text_lower = text.lower()
+        matched_count = sum(1 for keyword in agenda_keywords if keyword in text_lower)
+        
+        # 一致率を計算（0-100%）
+        alignment = min(100, int((matched_count / len(agenda_keywords)) * 100))
+        
+        # ボーナス：完全一致するキーワードがあれば+20%
+        if matched_count > 0:
+            alignment = min(100, alignment + 20)
+        
+        return alignment
 
 
 SENTENCE_RE = re.compile(r"[^。！？!?]+[。！？!?]?")

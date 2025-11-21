@@ -37,6 +37,7 @@ export function PocSatominPage() {
   const [history, setHistory] = useState<PocHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyPreview, setHistoryPreview] = useState<PocArchivedJob | null>(null);
+  const [realtimeClassifications, setRealtimeClassifications] = useState<Array<{ text: string; speaker: string; category: string; alignment: number; method: string }>>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -110,6 +111,7 @@ export function PocSatominPage() {
       const response = await startPocSatominRun(formData);
       setJobId(response.job_id);
       setTranscripts([]);
+      setRealtimeClassifications([]);
       setStatus('streaming');
       connectWebSocket(response.job_id);
       if (audioRef.current && audioPreviewUrl) {
@@ -155,6 +157,26 @@ export function PocSatominPage() {
             return updateExisting(prev);
           }
           return prev;
+        });
+      } else if (data.type === 'realtime_classification') {
+        // リアルタイム分析結果を受信
+        const { index, text, speaker, category, alignment, method, is_final } = data.payload;
+        const action = (data.action as 'update' | undefined) ?? 'append';
+
+        console.log(`🔍 リアルタイム分析: ${speaker} - ${text} → [${category}] ${alignment}% (${method}${is_final ? ' 確定' : ''})`);
+
+        setRealtimeClassifications((prev) => {
+          // 更新の場合、既存の項目を探して更新
+          if (action === 'update') {
+            const existingIndex = prev.findIndex((item) => item.text === text && item.speaker === speaker);
+            if (existingIndex >= 0) {
+              const updated = [...prev];
+              updated[existingIndex] = { text, speaker, category, alignment, method };
+              return updated;
+            }
+          }
+          // 新規追加
+          return [...prev, { text, speaker, category, alignment, method }];
         });
       } else if (data.type === 'complete') {
         setStatus('complete');
@@ -314,6 +336,37 @@ export function PocSatominPage() {
                 </article>
               ))}
               {transcripts.length === 0 && <p className="faded">アップロード後に文字起こしが表示されます。</p>}
+            </div>
+          </section>
+
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <p className="label">🔍 リアルタイム分析</p>
+                <h2>{realtimeClassifications.length} 件</h2>
+              </div>
+            </div>
+            <div className="transcript-feed">
+              {realtimeClassifications.map((item, index) => {
+                const isBedrock = item.method === 'bedrock';
+                const icon = isBedrock ? '✅' : '📊';
+                const bgColor = item.alignment >= 50 ? '#4caf50' : item.alignment >= 20 ? '#ff9800' : '#f44336';
+
+                return (
+                  <article key={index} className="transcript-item">
+                    <header>
+                      <strong>{item.speaker}</strong>
+                      <span className="pill">{item.category}</span>
+                      <span className="pill" style={{ backgroundColor: bgColor }}>
+                        {icon} {item.alignment}%
+                      </span>
+                      {isBedrock && <span className="pill" style={{ backgroundColor: '#2196f3', color: 'white' }}>AI確定</span>}
+                    </header>
+                    <p>{item.text}</p>
+                  </article>
+                );
+              })}
+              {realtimeClassifications.length === 0 && <p className="faded">文字起こし完了後にリアルタイム分析結果が表示されます。</p>}
             </div>
           </section>
         </div>
