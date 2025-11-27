@@ -1,7 +1,7 @@
 import jwt
 from pathlib import Path
 
-from config import get_settings
+from backend.config import get_settings
 
 
 def verify_jwt(token: str) -> bool:

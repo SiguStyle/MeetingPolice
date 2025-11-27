@@ -6,8 +6,8 @@ from typing import Any
 
 from botocore.exceptions import BotoCoreError, ClientError
 
-from config import get_settings
-from utils.auth_aws import get_session
+from backend.config import get_settings
+from backend.utils.auth_aws import get_session
 
 CLASSIFICATION_LABELS = ["議事進行", "報告", "提案", "相談", "質問", "回答", "決定", "コメント", "無関係な雑談"]
 
@@ -237,10 +237,13 @@ def classify_transcript_segments(
 
     try:
         content = _invoke_text_model(prompt, max_tokens=512, temperature=0.2, client=client)
+        print(f"[DEBUG] Bedrock生応答: {content}")
         parsed = _coerce_classifications(content)
+        print(f"[DEBUG] パース結果: {parsed}")
         if parsed:
             return _merge_classifications(clean_segments, parsed)
-    except (BotoCoreError, ClientError):
+    except (BotoCoreError, ClientError) as e:
+        print(f"[DEBUG] Bedrockエラー: {e}")
         pass
 
     return []

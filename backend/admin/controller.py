@@ -1,7 +1,7 @@
-from models.meeting_model import Meeting
-from services.repository import MeetingRepository
-from services.s3_storage import S3Storage
-from services.bedrock_utils import summarize_transcript
+from backend.models.meeting_model import Meeting
+from backend.services.repository import MeetingRepository
+from backend.services.s3_storage import S3Storage
+from backend.services.bedrock_utils import summarize_transcript
 
 
 class AdminController:

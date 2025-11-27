@@ -1,0 +1,98 @@
+[
+  {
+    "index": 1,
+    "speaker": "Speaker A",
+    "raw_speaker": "spk_mock_a",
+    "result_id": "mock-1",
+    "text": "Agenda topic: ・議題タイトル",
+    "timestamp": "2025-11-25 20:04:48"
+  },
+  {
+    "index": 2,
+    "speaker": "Speaker B",
+    "raw_speaker": "spk_mock_b",
+    "result_id": "mock-2",
+    "text": "Discussion: Confirming action items for '・議題タイトル'.",
+    "timestamp": "2025-11-25 20:04:50"
+  },
+  {
+    "index": 3,
+    "speaker": "Speaker A",
+    "raw_speaker": "spk_mock_a",
+    "result_id": "mock-3",
+    "text": "Agenda topic: モバイルアプリの初回チュートリアル離脱率改善検討",
+    "timestamp": "2025-11-25 20:04:51"
+  },
+  {
+    "index": 4,
+    "speaker": "Speaker B",
+    "raw_speaker": "spk_mock_b",
+    "result_id": "mock-4",
+    "text": "Discussion: Confirming action items for 'モバイルアプリの初回チュートリアル離脱率改善検討'.",
+    "timestamp": "2025-11-25 20:04:52"
+  },
+  {
+    "index": 5,
+    "speaker": "Speaker A",
+    "raw_speaker": "spk_mock_a",
+    "result_id": "mock-5",
+    "text": "Agenda topic: ・発表者",
+    "timestamp": "2025-11-25 20:04:53"
+  },
+  {
+    "index": 6,
+    "speaker": "Speaker B",
+    "raw_speaker": "spk_mock_b",
+    "result_id": "mock-6",
+    "text": "Discussion: Confirming action items for '・発表者'.",
+    "timestamp": "2025-11-25 20:04:54"
+  },
+  {
+    "index": 7,
+    "speaker": "Speaker A",
+    "raw_speaker": "spk_mock_a",
+    "result_id": "mock-7",
+    "text": "Agenda topic: 加藤 真一",
+    "timestamp": "2025-11-25 20:04:56"
+  },
+  {
+    "index": 8,
+    "speaker": "Speaker B",
+    "raw_speaker": "spk_mock_b",
+    "result_id": "mock-8",
+    "text": "Discussion: Confirming action items for '加藤 真一'.",
+    "timestamp": "2025-11-25 20:04:57"
+  },
+  {
+    "index": 9,
+    "speaker": "Speaker A",
+    "raw_speaker": "spk_mock_a",
+    "result_id": "mock-9",
+    "text": "Agenda topic: ・所要時間",
+    "timestamp": "2025-11-25 20:04:58"
+  },
+  {
+    "index": 10,
+    "speaker": "Speaker B",
+    "raw_speaker": "spk_mock_b",
+    "result_id": "mock-10",
+    "text": "Discussion: Confirming action items for '・所要時間'.",
+    "timestamp": "2025-11-25 20:04:59"
+  },
+  {
+    "index": 11,
+    "speaker": "Speaker A",
+    "raw_speaker": "spk_mock_a",
+    "result_id": "mock-11",
+    "text": "Agenda topic: 3分",
+    "timestamp": "2025-11-25 20:05:00"
+  },
+  {
+    "index": 12,
+    "speaker": "Speaker B",
+    "raw_speaker": "spk_mock_b",
+    "result_id": "mock-12",
+    "text": "Discussion: Confirming action items for '3分'.",
+    "timestamp": "2025-11-25 20:05:02"
+  }
+]

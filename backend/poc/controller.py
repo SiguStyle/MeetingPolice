@@ -15,12 +15,12 @@ from typing import Any
 from amazon_transcribe.auth import StaticCredentialResolver
 from amazon_transcribe.client import TranscribeStreamingClient
 
-from config import get_settings
-from services.bedrock_utils import classify_transcript_segments, summarize_transcript, _guess_category
-from services.comprehend_utils import analyze_sentiment
-from services.s3_storage import S3Storage
-from utils.auth_aws import get_session
-from utils.time_utils import now_iso
+from backend.config import get_settings
+from backend.services.bedrock_utils import classify_transcript_segments, summarize_transcript, _guess_category
+from backend.services.comprehend_utils import analyze_sentiment
+from backend.services.s3_storage import S3Storage
+from backend.utils.auth_aws import get_session
+from backend.utils.time_utils import now_iso
 
 
 @dataclass

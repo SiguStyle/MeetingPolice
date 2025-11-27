@@ -1,0 +1,155 @@
+controller.pyの勉強
+
+このコードは、POC（Proof of Concept）用の音声文字起こしコントローラーです。リアルタイムで音声をテキストに変換し、話者を識別する機能を持っています。
+
+◇POCControllerクラスの主な機能：
+・start_transcription() - 文字起こしジョブの開始
+
+アジェンダテキストと音声ファイルを受け取ります
+ジョブIDを生成して、音声処理を非同期で開始します
+
+・リアルタイム文字起こし処理（_run_transcribe_stream）
+AWS Transcribe Streamingを使用
+音声を50msのチャンクに分割して送信
+話者識別機能付き（Speaker 1, Speaker 2...）
+部分結果と最終結果を区別して処理
+
+
+_run_transcribe_streamメソッドについて詳しく説明します。このメソッドは、AWS Transcribe Streamingを使ったリアルタイム音声認識の中核部分です。
+
+全体の流れ：
+認証情報の準備
+session = get_session()
+credentials = session.get_credentials()
+frozen = credentials.get_frozen_credentials()
+credential_resolver = StaticCredentialResolver(
+    frozen.access_key,
+    frozen.secret_key,
+    frozen.token,
+)
+
+AWS認証情報を取得して、Transcribe専用のクライアントを作成
+ストリーミングクライアントの作成
+client = TranscribeStreamingClient(
+    region=self.settings.aws_region,
+    credential_resolver=credential_resolver,
+)
+チャンクサイズの計算
+chunk_ms = 50  # 50ミリ秒ごと
+chunk_bytes = max(1, int(sample_rate * 2 * chunk_ms / 1000))
+音声を50msの小さな塊に分割
+16kHz × 2バイト × 0.05秒 = 1600バイト/チャンク
+ストリーミングセッションの開始
+stream = await client.start_stream_transcription(
+    language_code="ja-JP",  # 日本語
+    media_encoding="pcm",
+    media_sample_rate_hz=sample_rate,
+    show_speaker_label=True,  # 話者識別ON
+    enable_partial_results_stabilization=True,  # 部分結果の安定化
+    partial_results_stability="medium",
+)
+2つの非同期タスクを並行実行
+タスク1: send_audio() - 音声データの送信
+
+async def send_audio():
+    chunk_delay = chunk_ms / 1000  # 0.05秒
+    for chunk in self._chunk_pcm(pcm_bytes, chunk_bytes):
+        await stream.input_stream.send_audio_event(audio_chunk=chunk)
+        await asyncio.sleep(chunk_delay)  # リアルタイムを再現
+    await stream.input_stream.end_stream()
+音声を50msごとに送信
+実際の会話速度を再現するため、送信間隔を空ける
+全て送信したら終了を通知
+タスク2: consume_results() - 結果の受信と処理
+
+async def consume_results():
+    async for event in stream.output_stream:
+        transcript = getattr(event, "transcript", None)
+        for result in getattr(transcript, "results", []):
+            result_id = getattr(result, "result_id", None)
+            is_partial = getattr(result, "is_partial", False)
+            
+            # 重複チェック
+            if not is_partial and result_id in job.processed_result_ids:
+                continue
+            
+            # テキスト抽出
+            alternative = alternatives[0]
+            text = getattr(alternative, "transcript", "").strip()
+            
+            # 話者識別
+            speaker_label, raw_label = self._speaker_from_items(job, alternative)
+            
+            # 結果を処理
+            await self._handle_result(job, result_id, speaker_label, raw_label, text, not is_partial)
+            
+            # 最終結果なら記録
+            if not is_partial:
+                job.processed_result_ids.add(result_id)
+結果の種類：
+
+部分結果（is_partial=True）: 「こんに...」「こんにち...」「こんにちは」と徐々に更新される
+最終結果（is_partial=False）: 確定した文字起こし結果
+話者識別の仕組み（_speaker_from_items）：
+
+def _speaker_from_items(self, job: PocJob, alternative: Any) -> tuple[str, str]:
+    counts: dict[str, int] = {}
+    for item in alternative.items:
+        label = item.speaker
+        counts[label] = counts.get(label, 0) + 1
+    raw_label = max(counts, key=counts.get)  # 最も多い話者ラベル
+    friendly = self._speaker_name(job, raw_label)  # "Speaker 1"に変換
+    return friendly, raw_label
+各単語に話者ラベルが付いている
+最も多く出現した話者を、その発言の話者とする
+結果の管理（_handle_result）：
+
+新しい結果ならpending_resultsに追加 → クライアントに通知（append）
+既存の結果が更新されたら内容を更新 → クライアントに通知（update）
+最終結果になったらtranscriptsに移動 → 確定
+終了処理：
+
+finally:
+    await self._finalize_pending_results(job)  # 未確定の結果を全て確定
+    if success:
+        job.status = "completed"
+        self._persist_transcripts(job)  # S3に保存
+        await job.queue.put({"type": "complete"})
+まとめ： このメソッドは、音声を小刻みに送信しながら、リアルタイムで文字起こし結果を受信し、話者を識別して、WebSocket経由でクライアントに配信する、という複雑な処理を並行実行しています。まるでZoomの字幕機能のような動作を実現しているわけです。
+
+
+
+
+
+・音声フォーマット変換（_prepare_pcm）
+WAVファイルをPCM形式に変換
+サンプルレート: 16kHz
+チャンネル: モノラル
+ビット深度: 16bit
+
+・話者管理
+_speaker_name() - 話者に「Speaker 1」「Speaker 2」などのラベルを自動割り当て
+_speaker_from_items() - 音声認識結果から話者を特定
+
+・結果の管理
+pending_results - 部分結果を一時保存
+最終結果が確定したらtranscriptsリストに追加
+リアルタイムでqueue経由でクライアントに通知
+
+・アーカイブ機能
+完了したジョブをS3に保存（_persist_transcripts）
+アジェンダや最初の発言からファイル名を自動生成
+過去のジョブ一覧を取得可能
+
+・フォールバック機能（_simulate_stream）
+AWS Transcribeが失敗した場合、モックデータを生成
+アジェンダに基づいてダミーの会話を作成
+
+◇データフロー：
+音声アップロード → PCM変換
+AWS Transcribeにストリーミング送信
+リアルタイムで結果を受信（部分結果→最終結果）
+話者を識別してラベル付け
+WebSocketなどでクライアントに通知
+完了後、S3にアーカイブ
+このコードは、会議の音声をリアルタイムで文字起こしし、誰が何を話したかを記録するシステムの中核部分ですね。

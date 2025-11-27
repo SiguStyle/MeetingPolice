@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
-from models.meeting_model import Meeting
+from backend.models.meeting_model import Meeting
 
 
 class MeetingRepository:

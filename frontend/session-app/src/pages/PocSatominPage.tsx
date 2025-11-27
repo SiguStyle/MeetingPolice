@@ -37,17 +37,47 @@ export function PocSatominPage() {
   const [history, setHistory] = useState<PocHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyPreview, setHistoryPreview] = useState<PocArchivedJob | null>(null);
-  const [realtimeClassifications, setRealtimeClassifications] = useState<Array<{ text: string; speaker: string; category: string; alignment: number; method: string }>>([]);
+  const [realtimeClassifications, setRealtimeClassifications] = useState<Array<{ text: string; speaker: string; category: string; alignment: number; method: string; is_final?: boolean }>>([]);
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+  const [scheduledMinutes, setScheduledMinutes] = useState<number | null>(null);
+  const [timerRunning, setTimerRunning] = useState<boolean>(false);
   const wsRef = useRef<WebSocket | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
       }
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
     };
   }, []);
+
+  // タイマー管理
+  useEffect(() => {
+    if (status === 'streaming') {
+      // タイマー開始
+      setElapsedSeconds(0);
+      timerRef.current = window.setInterval(() => {
+        setElapsedSeconds((prev) => prev + 1);
+      }, 1000);
+    } else {
+      // タイマー停止
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [status]);
 
   useEffect(() => {
     if (!audioFile) {
@@ -72,12 +102,34 @@ export function PocSatominPage() {
       try {
         const detail = await fetchPocSatominJob(jobId);
         setJobAgenda(detail.agenda_text);
+        extractScheduledTime(detail.agenda_text);
       } catch (err) {
         console.error(err);
       }
     };
     fetchJob();
   }, [jobId, status]);
+
+  // アジェンダから予定時間を抽出
+  const extractScheduledTime = (agendaText: string) => {
+    if (!agendaText) {
+      setScheduledMinutes(null);
+      return;
+    }
+    // 「30分」「1時間」「90分」などのパターンを検索
+    const minuteMatch = agendaText.match(/(\d+)\s*分/);
+    const hourMatch = agendaText.match(/(\d+)\s*時間/);
+
+    if (minuteMatch) {
+      setScheduledMinutes(parseInt(minuteMatch[1], 10));
+      console.log(`⏰ 予定時間: ${minuteMatch[1]}分`);
+    } else if (hourMatch) {
+      setScheduledMinutes(parseInt(hourMatch[1], 10) * 60);
+      console.log(`⏰ 予定時間: ${hourMatch[1]}時間`);
+    } else {
+      setScheduledMinutes(null);
+    }
+  };
 
   useEffect(() => {
     const loadHistory = async () => {
@@ -98,6 +150,7 @@ export function PocSatominPage() {
     event.preventDefault();
     setMessage(null);
     setJobAgenda('');
+    setScheduledMinutes(null);
     if (!audioFile) {
       setMessage('音声ファイルを選択してください。');
       return;
@@ -105,6 +158,10 @@ export function PocSatominPage() {
     const formData = new FormData();
     if (agendaFile) {
       formData.append('agenda', agendaFile);
+      // アジェンダファイルから予定時間を抽出
+      const agendaText = await agendaFile.text();
+      setJobAgenda(agendaText);
+      extractScheduledTime(agendaText);
     }
     formData.append('audio', audioFile);
     try {
@@ -131,9 +188,17 @@ export function PocSatominPage() {
     if (wsRef.current) {
       wsRef.current.close();
     }
-    const ws = new WebSocket(buildWsUrl(`/poc_satomin/ws/${id}`));
+    const wsUrl = buildWsUrl(`/poc_satomin/ws/${id}`);
+    console.log('🔌 WebSocket接続開始:', wsUrl);
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
+
+    ws.onopen = () => {
+      console.log('✅ WebSocket接続成功！');
+    };
+
     ws.onmessage = (event) => {
+      console.log('📨 WebSocketメッセージ受信:', event.data);
       const data = JSON.parse(event.data);
       if (data.type === 'transcript') {
         const payload = data.payload as PocTranscript;
@@ -171,12 +236,12 @@ export function PocSatominPage() {
             const existingIndex = prev.findIndex((item) => item.text === text && item.speaker === speaker);
             if (existingIndex >= 0) {
               const updated = [...prev];
-              updated[existingIndex] = { text, speaker, category, alignment, method };
+              updated[existingIndex] = { text, speaker, category, alignment, method, is_final };
               return updated;
             }
           }
           // 新規追加
-          return [...prev, { text, speaker, category, alignment, method }];
+          return [...prev, { text, speaker, category, alignment, method, is_final }];
         });
       } else if (data.type === 'complete') {
         setStatus('complete');
@@ -186,8 +251,12 @@ export function PocSatominPage() {
         setMessage(data.message);
       }
     };
-    ws.onerror = () => setMessage('WebSocket への接続に失敗しました。');
-    ws.onclose = () => {
+    ws.onerror = (error) => {
+      console.error('❌ WebSocketエラー:', error);
+      setMessage('WebSocket への接続に失敗しました。');
+    };
+    ws.onclose = (event) => {
+      console.log('🔌 WebSocket切断:', event.code, event.reason);
       wsRef.current = null;
     };
   };
@@ -213,6 +282,25 @@ export function PocSatominPage() {
       const text = err instanceof Error ? err.message : '過去の文字起こし取得に失敗しました';
       setMessage(text);
     }
+  };
+
+  // 時間を「MM:SS」形式にフォーマット
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // タイマーの状態を判定（normal / warning / danger）
+  const getTimerStatus = (): 'normal' | 'warning' | 'danger' => {
+    if (!scheduledMinutes) return 'normal';
+    const scheduledSeconds = scheduledMinutes * 60;
+    const remainingSeconds = scheduledSeconds - elapsedSeconds;
+    const remainingPercent = (remainingSeconds / scheduledSeconds) * 100;
+
+    if (remainingSeconds <= 0) return 'danger'; // 超過
+    if (remainingPercent <= 15) return 'warning'; // 残り15%以下
+    return 'normal';
   };
 
   return (
@@ -244,6 +332,30 @@ export function PocSatominPage() {
                 <code>{jobId}</code>
                 <p className="label">ステータス</p>
                 <span className={`pill ${status}`}>{status}</span>
+                {status === 'streaming' && (
+                  <>
+                    <p className="label">経過時間</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span
+                        className="pill"
+                        style={{
+                          fontSize: '1.2em',
+                          backgroundColor: getTimerStatus() === 'danger' ? '#f44336' : getTimerStatus() === 'warning' ? '#ff9800' : '#4caf50',
+                          color: 'white'
+                        }}
+                      >
+                        ⏱️ {formatTime(elapsedSeconds)}
+                      </span>
+                      {scheduledMinutes && (
+                        <span style={{ fontSize: '0.9em', color: '#666' }}>
+                          / {scheduledMinutes}分
+                          {getTimerStatus() === 'danger' && ' ⚠️ 超過！'}
+                          {getTimerStatus() === 'warning' && ' ⚠️ まもなく終了'}
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             )}
             {audioPreviewUrl && (
@@ -294,22 +406,20 @@ export function PocSatominPage() {
               </div>
             )}
             {historyPreview && (
-              <div className="history-preview">
-                <p className="label">選択中のアジェンダ</p>
-                {historyPreview.archive_name && (
-                  <p>
-                    <strong>{historyPreview.archive_name}</strong>
-                  </p>
-                )}
-                <pre>{historyPreview.agenda_text || '（なし）'}</pre>
-                <p className="label">文字起こし（抜粋）</p>
-                <div className="history-transcripts">
-                  {historyPreview.transcripts.slice(0, 5).map((item) => (
-                    <p key={item.index}>
-                      <strong>{item.speaker}:</strong> {item.text}
+              <div className="history-preview" style={{ fontSize: '0.85em', maxHeight: '200px', overflow: 'auto' }}>
+                <p className="label">選択中: {historyPreview.archive_name || historyPreview.job_id}</p>
+                <pre style={{ fontSize: '0.9em', maxHeight: '80px', overflow: 'auto' }}>
+                  {(historyPreview.agenda_text || '（なし）').slice(0, 150)}
+                  {historyPreview.agenda_text && historyPreview.agenda_text.length > 150 && '...'}
+                </pre>
+                <p className="label">文字起こし（最初の2行）</p>
+                <div className="history-transcripts" style={{ fontSize: '0.85em' }}>
+                  {historyPreview.transcripts.slice(0, 2).map((item) => (
+                    <p key={item.index} style={{ margin: '4px 0' }}>
+                      <strong>{item.speaker}:</strong> {item.text.slice(0, 50)}{item.text.length > 50 && '...'}
                     </p>
                   ))}
-                  {historyPreview.transcripts.length > 5 && <p>…ほか {historyPreview.transcripts.length - 5} 行</p>}
+                  {historyPreview.transcripts.length > 2 && <p style={{ fontSize: '0.9em', color: '#999' }}>…他 {historyPreview.transcripts.length - 2} 行</p>}
                 </div>
               </div>
             )}
@@ -343,13 +453,28 @@ export function PocSatominPage() {
             <div className="panel-header">
               <div>
                 <p className="label">🔍 リアルタイム分析</p>
-                <h2>{realtimeClassifications.length} 件</h2>
+                <h2>
+                  {realtimeClassifications.length} 件
+                  {realtimeClassifications.length > 0 && (() => {
+                    const avgAlignment = Math.round(
+                      realtimeClassifications.reduce((sum, item) => sum + item.alignment, 0) / realtimeClassifications.length
+                    );
+                    const avgColor = avgAlignment >= 50 ? '#4caf50' : avgAlignment >= 30 ? '#ff9800' : '#f44336';
+                    return (
+                      <span style={{ marginLeft: '12px', fontSize: '0.9em' }}>
+                        <span className="pill" style={{ backgroundColor: avgColor, color: 'white' }}>
+                          平均一致度: {avgAlignment}%
+                        </span>
+                      </span>
+                    );
+                  })()}
+                </h2>
               </div>
             </div>
             <div className="transcript-feed">
               {realtimeClassifications.map((item, index) => {
-                const isBedrock = item.method === 'bedrock';
-                const icon = isBedrock ? '✅' : '📊';
+                const isFinal = item.is_final === true;
+                const icon = isFinal ? '✅' : '📊';
                 const bgColor = item.alignment >= 50 ? '#4caf50' : item.alignment >= 20 ? '#ff9800' : '#f44336';
 
                 return (
@@ -360,7 +485,7 @@ export function PocSatominPage() {
                       <span className="pill" style={{ backgroundColor: bgColor }}>
                         {icon} {item.alignment}%
                       </span>
-                      {isBedrock && <span className="pill" style={{ backgroundColor: '#2196f3', color: 'white' }}>AI確定</span>}
+                      {isFinal && <span className="pill" style={{ backgroundColor: '#2196f3', color: 'white' }}>AI確定</span>}
                     </header>
                     <p>{item.text}</p>
                   </article>

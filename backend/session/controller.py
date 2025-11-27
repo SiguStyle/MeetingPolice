@@ -6,11 +6,11 @@ from contextlib import suppress
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
-from services.vonage_client import VonageClient
-from services.transcribe_stream import TranscribeStream
-from services.comprehend_utils import analyze_sentiment
-from services.repository import MeetingRepository
-from utils.time_utils import now_iso
+from backend.services.vonage_client import VonageClient
+from backend.services.transcribe_stream import TranscribeStream
+from backend.services.comprehend_utils import analyze_sentiment
+from backend.services.repository import MeetingRepository
+from backend.utils.time_utils import now_iso
 
 
 class SessionController:

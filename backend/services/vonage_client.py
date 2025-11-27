@@ -6,7 +6,7 @@ from typing import Any
 
 import jwt
 
-from config import get_settings
+from backend.config import get_settings
 
 
 class VonageClient:

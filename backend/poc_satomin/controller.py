@@ -15,10 +15,11 @@ from typing import Any
 from amazon_transcribe.auth import StaticCredentialResolver
 from amazon_transcribe.client import TranscribeStreamingClient
 
-from config import get_settings
-from services.s3_storage import S3Storage
-from utils.auth_aws import get_session
-from utils.time_utils import now_iso
+from backend.config import get_settings
+from backend.services.bedrock_utils import classify_transcript_segments, _guess_category
+from backend.services.s3_storage import S3Storage
+from backend.utils.auth_aws import get_session
+from backend.utils.time_utils import now_iso
 
 
 @dataclass
@@ -77,7 +78,56 @@ class POCController:
             "classified_segments": job.classified_segments,
         }
 
-
+    #最終結果が出たら分析開始する
+    async def classify_realtime(self, job_id: str, text: str, speaker: str, index: int) -> dict[str, Any]:
+        """リアルタイムで1つの発言を簡易分析（ハイブリッド方式）"""
+        print(f"📊 リアルタイム分析開始: {speaker} - {text[:30]}...")
+        self.logger.info(f"📊 リアルタイム分析開始: {speaker} - {text[:30]}...")
+        job = self.get_job(job_id)
+        if not job:
+            raise KeyError(job_id)
+        
+        # メタ情報（議題、所要時間、発表者など）の発言はスキップ
+        # 「Agenda topic:」で始まる発言は全てスキップ
+        if text.startswith("Agenda topic:"):
+            print(f"  → メタ情報のためスキップ: {text[:30]}...")
+            return {}
+        
+        # 「Discussion:」の後に続く内容をチェック
+        if text.startswith("Discussion: Confirming action items for"):
+            # シングルクォートで囲まれた部分を抽出
+            import re
+            match = re.search(r"'([^']+)'", text)
+            if match:
+                content = match.group(1)
+                # メタ情報キーワードをチェック
+                meta_keywords = ["議題タイトル", "所要時間", "発表者", "分", "時間"]
+                # 短い単語（10文字未満）で、メタ情報キーワードを含む場合はスキップ
+                if len(content) < 10 or any(keyword in content for keyword in meta_keywords):
+                    print(f"  → メタ情報のためスキップ: {text[:50]}...")
+                    return {}
+        
+        # ステップ1: キーワードベースの簡易分類（即座に返す）
+        category_quick = _guess_category(text)
+        alignment_quick = self._calculate_alignment(text, job.agenda_text)
+        
+        result_quick = {
+            "index": index,
+            "text": text,
+            "speaker": speaker,
+            "category": category_quick,
+            "alignment": alignment_quick,
+            "method": "keyword",  # キーワードベース
+            "is_final": False  # まだ確定じゃない
+        }
+        
+        # すぐにクライアントに通知
+        await job.queue.put({"type": "realtime_classification", "payload": result_quick})
+        
+        # ステップ2: バックグラウンドでBedrockに送信（非同期）
+        asyncio.create_task(self._classify_with_bedrock(job, text, speaker, index))
+        
+        return result_quick
 
     def list_archived_jobs(self, limit: int = 20) -> list[dict[str, Any]]:
         keys = [key for key in self.archive_storage.list_objects("poc/") if key.endswith(".json")]
@@ -133,6 +183,8 @@ class POCController:
             job.transcripts.append(payload)
             job.next_entry_index = max(job.next_entry_index, idx + 1)
             await job.queue.put({"type": "transcript", "action": "append", "payload": payload})
+            # リアルタイム分析を実行
+            asyncio.create_task(self.classify_realtime(job.job_id, line, payload["speaker"], idx))
             await asyncio.sleep(1.2)
         job.status = "completed"
         transcript_path.write_text(json.dumps(job.transcripts, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -146,19 +198,29 @@ class POCController:
             if line.strip(" -*•\t")
         ]
         script: list[str] = []
+        
+        # リアルな会議の発言を生成
         if agenda_lines:
+            # メタ情報の行（議題タイトル、発表者、所要時間など）
             for line in agenda_lines:
                 script.append(f"Agenda topic: {line}")
-                script.append(f"Discussion: Confirming action items for '{line}'.")
-
+            
+            # 実際の議論内容を追加
+            script.append("現在の離脱率は約30%で、特にプロフィール登録画面で多く発生しています。")
+            script.append("ユーザーテストの結果、入力項目が多すぎるという意見が多かったです。")
+            script.append("入力項目を必須項目だけに絞ることを提案します。")
+            script.append("それは良いアイデアですね。具体的にどの項目を残しますか？")
+            script.append("メールアドレスとパスワードだけにして、他は後から入力できるようにします。")
+            script.append("了解しました。その方向で実装を進めましょう。")
+            script.append("実装期間はどのくらいを見込んでいますか？")
+            script.append("2週間程度で完了できると思います。")
+        
         if not script:
             script.append(f"Processing uploaded audio file '{job.audio_filename}'")
+            script.append("Let's discuss the main topics for today's meeting.")
+            script.append("I agree, we should focus on the key action items.")
 
-        fallback_segments = max(3, min(10, len(job.audio_filename) // 2))
-        for idx in range(fallback_segments):
-            script.append(f"Speaker {chr(65 + idx % 2)} shares update part {idx + 1}.")
-
-        return script[:12]
+        return script[:15]  # 最大15件
 
     def _job_dir(self, job_id: str) -> Path:
         return self.storage_dir / job_id
@@ -307,13 +369,19 @@ class POCController:
             if entry["text"] == text and entry["speaker"] == speaker_label:
                 if is_final:
                     await self._finalize_result(job, result_id)
+                    # 最終結果が出たら、すぐに分析開始
+                    asyncio.create_task(self.classify_realtime(job.job_id, text, speaker_label, entry["index"]))
                 return
             entry["text"] = text
             entry["speaker"] = speaker_label
             entry["raw_speaker"] = raw_label
             await job.queue.put({"type": "transcript", "action": "update", "payload": self._public_payload(entry)})
+        
+        # 最終結果が出たら、必ず分析を実行
         if is_final:
             await self._finalize_result(job, result_id)
+            # リアルタイム分析を開始
+            asyncio.create_task(self.classify_realtime(job.job_id, entry["text"], entry["speaker"], entry["index"]))
 
     async def _finalize_result(self, job: PocJob, result_id: str) -> None:
         entry = job.pending_results.pop(result_id, None)
@@ -390,3 +458,127 @@ class POCController:
 
 
 
+
+    async def _classify_with_bedrock(self, job: PocJob, text: str, speaker: str, index: int) -> None:
+        """Bedrockで高精度な分析を実行（バックグラウンド）"""
+        print(f"🔍 Bedrock分析開始: {speaker} - {text[:30]}...")
+        self.logger.info(f"🔍 Bedrock分析開始: {speaker} - {text[:30]}...")
+        try:
+            # 文脈を取得（前後の発言）
+            context_before = ""
+            context_after = ""
+            for transcript in job.transcripts:
+                if transcript.get("index") == index - 1:
+                    context_before = transcript.get("text", "")
+                elif transcript.get("index") == index + 1:
+                    context_after = transcript.get("text", "")
+            
+            # Bedrockで分析
+            segment = {
+                "index": index,
+                "speaker": speaker,
+                "text": text,
+                "context_before": context_before,
+                "context_after": context_after,
+            }
+            
+            # classify_transcript_segmentsを使って分析
+            print(f"  → Bedrockに送信中... segment={segment}")
+            print(f"  → agenda_text={job.agenda_text[:100]}...")
+            classified = await asyncio.to_thread(
+                classify_transcript_segments,
+                [segment],
+                job.agenda_text
+            )
+            print(f"  → Bedrockから応答受信: {classified}")
+            print(f"  → classified type: {type(classified)}, len: {len(classified) if isinstance(classified, list) else 'N/A'}")
+            
+            if classified and len(classified) > 0:
+                result = classified[0]
+                category_ai = result.get("category", _guess_category(text))
+                alignment_ai = result.get("alignment", 0)
+                
+                result_ai = {
+                    "index": index,
+                    "text": text,
+                    "speaker": speaker,
+                    "category": category_ai,
+                    "alignment": alignment_ai,
+                    "method": "bedrock",  # AI分析
+                    "is_final": True  # 確定
+                }
+                
+                # 更新をクライアントに通知
+                await job.queue.put({"type": "realtime_classification", "action": "update", "payload": result_ai})
+                
+                print(f"✅ Bedrock分析完了: {speaker} - {text[:30]}... → [{category_ai}] {alignment_ai}%")
+                self.logger.info(f"Bedrock分析完了: {speaker} - {text} → [{category_ai}] {alignment_ai}%")
+            else:
+                # Bedrockが失敗したら、キーワードベースの結果を「確定」として送る
+                print(f"⚠️ Bedrockから結果なし、キーワードベースを確定として送信")
+                category_fallback = _guess_category(text)
+                alignment_fallback = self._calculate_alignment(text, job.agenda_text)
+                
+                result_fallback = {
+                    "index": index,
+                    "text": text,
+                    "speaker": speaker,
+                    "category": category_fallback,
+                    "alignment": alignment_fallback,
+                    "method": "keyword",  # キーワードベース
+                    "is_final": True  # 確定（Bedrockが失敗したので）
+                }
+                
+                await job.queue.put({"type": "realtime_classification", "action": "update", "payload": result_fallback})
+                print(f"✅ キーワード分析確定: {speaker} - {text[:30]}... → [{category_fallback}] {alignment_fallback}%")
+        
+        except Exception as e:
+            print(f"❌ Bedrock分析失敗: {e}")
+            print(f"詳細: {type(e).__name__}: {str(e)}")
+            self.logger.error(f"❌ Bedrock分析失敗: {e}")
+            self.logger.exception("詳細なエラー:")
+            # エラーが出てもキーワードベースの結果は残るので問題なし
+
+    def _calculate_alignment(self, text: str, agenda_text: str) -> int:
+        """発言とアジェンダの一致度を0-100で計算（キーワードベース）"""
+        if not agenda_text or not agenda_text.strip():
+            return 50  # アジェンダがなければデフォルト50%
+        
+        # メタ情報（議題、所要時間、発表者など）の発言は一致度を計算しない
+        meta_keywords = ["議題", "タイトル", "所要時間", "発表者", "Agenda topic:", "分", "時間"]
+        if any(keyword in text for keyword in meta_keywords):
+            return 50  # メタ情報はデフォルト50%
+        
+        # アジェンダから重要なキーワードを抽出（メタ情報を除外）
+        agenda_keywords = set()
+        skip_keywords = {"議題", "タイトル", "所要時間", "発表者", "検討事項", "目的", "背景"}
+        
+        for line in agenda_text.splitlines():
+            line = line.strip(" -*•\t0123456789.。")  # 箇条書き記号や番号を除去
+            if not line:
+                continue
+            # メタ情報の行をスキップ
+            if any(skip in line for skip in skip_keywords):
+                continue
+            # 2文字以上の単語を抽出（簡易的）
+            words = [w for w in re.findall(r'[ぁ-んァ-ヶ一-龠ー]+', line) if len(w) >= 2]
+            # スキップキーワードを除外
+            words = [w for w in words if w not in skip_keywords]
+            agenda_keywords.update(words)
+        
+        if not agenda_keywords:
+            return 50  # キーワードがなければデフォルト50%
+        
+        # 発言に含まれるキーワードの数をカウント
+        text_lower = text.lower()
+        matched_count = sum(1 for keyword in agenda_keywords if keyword in text_lower)
+        
+        # 一致率を計算（0-100%）
+        if matched_count == 0:
+            return 30  # 全く一致しなくても最低30%
+        
+        # マッチ率に基づいて計算（より寛容に）
+        match_ratio = matched_count / len(agenda_keywords)
+        alignment = min(100, int(30 + (match_ratio * 70)))  # 30%〜100%の範囲
+        
+        return alignment

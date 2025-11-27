@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from botocore.exceptions import BotoCoreError, ClientError
 
-from config import get_settings
-from utils.auth_aws import get_session
+from backend.config import get_settings
+from backend.utils.auth_aws import get_session
 
 
 def analyze_sentiment(text: str) -> dict:

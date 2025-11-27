@@ -1,7 +1,7 @@
 import boto3
 from functools import lru_cache
 
-from config import get_settings
+from backend.config import get_settings
 
 
 @lru_cache

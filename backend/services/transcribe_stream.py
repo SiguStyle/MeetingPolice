@@ -5,8 +5,8 @@ from typing import Iterable, Iterator, Any
 
 from botocore.exceptions import BotoCoreError, ClientError
 
-from utils.auth_aws import get_session
-from config import get_settings
+from backend.utils.auth_aws import get_session
+from backend.config import get_settings
 
 
 class _AudioStream:
@@ -29,7 +29,7 @@ class TranscribeStream:
         try:
             response = await asyncio.to_thread(
                 self.client.start_stream_transcription,
-                LanguageCode="en-US",
+                LanguageCode="ja-JP",
                 MediaEncoding="pcm",
                 MediaSampleRateHertz=16000,
                 AudioStream=_AudioStream(chunks),

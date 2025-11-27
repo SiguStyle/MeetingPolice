@@ -1,11 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import get_settings
-from session.routes import router as session_router
-from admin.routes import router as admin_router
-from poc import router as poc_router
-from poc_satomin import router as poc_satomin_router
+from backend.config import get_settings
+from backend.session.routes import router as session_router
+from backend.admin.routes import router as admin_router
+from backend.poc import router as poc_router
+from backend.poc_satomin import router as poc_satomin_router
 
 settings = get_settings()
 
