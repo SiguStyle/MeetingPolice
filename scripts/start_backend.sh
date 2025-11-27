@@ -12,5 +12,5 @@ fi
 source .venv/bin/activate
 pip install -r requirements.txt
 
-cd backend
-exec uvicorn main:app --host 0.0.0.0 --port "${PORT:-8000}"
+export PYTHONPATH=$REPO_ROOT
+exec uvicorn backend.main:app --host 0.0.0.0 --port "${PORT:-8000}"
