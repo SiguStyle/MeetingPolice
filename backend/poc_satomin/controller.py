@@ -93,6 +93,12 @@ class POCController:
             print(f"  → メタ情報のためスキップ: {text[:30]}...")
             return {}
         
+        # コメント（短い感想や挨拶）もスキップ
+        comment_keywords = ["ありがとう", "お疲れ", "了解", "はい", "すみません", "失礼"]
+        if len(text) < 15 and any(keyword in text for keyword in comment_keywords):
+            print(f"  → コメントのためスキップ: {text[:30]}...")
+            return {}
+        
         # 「Discussion:」の後に続く内容をチェック
         if text.startswith("Discussion: Confirming action items for"):
             # シングルクォートで囲まれた部分を抽出
@@ -186,6 +192,10 @@ class POCController:
             # リアルタイム分析を実行
             asyncio.create_task(self.classify_realtime(job.job_id, line, payload["speaker"], idx))
             await asyncio.sleep(1.2)
+        
+        # 全ての分析が完了するまで少し待つ
+        await asyncio.sleep(3)
+        
         job.status = "completed"
         transcript_path.write_text(json.dumps(job.transcripts, ensure_ascii=False, indent=2), encoding="utf-8")
         self._persist_transcripts(job)

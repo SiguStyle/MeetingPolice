@@ -406,20 +406,19 @@ export function PocSatominPage() {
               </div>
             )}
             {historyPreview && (
-              <div className="history-preview" style={{ fontSize: '0.85em', maxHeight: '200px', overflow: 'auto' }}>
+              <div className="history-preview" style={{ fontSize: '0.85em', maxHeight: '400px', overflow: 'auto' }}>
                 <p className="label">選択中: {historyPreview.archive_name || historyPreview.job_id}</p>
-                <pre style={{ fontSize: '0.9em', maxHeight: '80px', overflow: 'auto' }}>
-                  {(historyPreview.agenda_text || '（なし）').slice(0, 150)}
-                  {historyPreview.agenda_text && historyPreview.agenda_text.length > 150 && '...'}
+                <p className="label">アジェンダ（全文）</p>
+                <pre style={{ fontSize: '0.9em', maxHeight: '150px', overflow: 'auto', whiteSpace: 'pre-wrap' }}>
+                  {historyPreview.agenda_text || '（なし）'}
                 </pre>
-                <p className="label">文字起こし（最初の2行）</p>
-                <div className="history-transcripts" style={{ fontSize: '0.85em' }}>
-                  {historyPreview.transcripts.slice(0, 2).map((item) => (
+                <p className="label">文字起こし（全文）</p>
+                <div className="history-transcripts" style={{ fontSize: '0.85em', maxHeight: '200px', overflow: 'auto' }}>
+                  {historyPreview.transcripts.map((item) => (
                     <p key={item.index} style={{ margin: '4px 0' }}>
-                      <strong>{item.speaker}:</strong> {item.text.slice(0, 50)}{item.text.length > 50 && '...'}
+                      <strong>{item.speaker}:</strong> {item.text}
                     </p>
                   ))}
-                  {historyPreview.transcripts.length > 2 && <p style={{ fontSize: '0.9em', color: '#999' }}>…他 {historyPreview.transcripts.length - 2} 行</p>}
                 </div>
               </div>
             )}
