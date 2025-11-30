@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import type {
   PocTranscript,
@@ -26,6 +27,7 @@ const buildWsUrl = (path: string) => {
 };
 
 export function PocSatominPage() {
+  const navigate = useNavigate();
   const [agendaFile, setAgendaFile] = useState<File | null>(null);
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
@@ -41,9 +43,13 @@ export function PocSatominPage() {
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [scheduledMinutes, setScheduledMinutes] = useState<number | null>(null);
   const [timerRunning, setTimerRunning] = useState<boolean>(false);
+  const [showWarning, setShowWarning] = useState<boolean>(false);
   const wsRef = useRef<WebSocket | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<number | null>(null);
+  const lastAlertTimeRef = useRef<number>(0);
+  const speechSynthRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const alertIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
@@ -303,8 +309,127 @@ export function PocSatominPage() {
     return 'normal';
   };
 
+  // 音声アラートを再生
+  const playVoiceAlert = (message: string) => {
+    // 既存の音声を停止
+    if (speechSynthRef.current) {
+      window.speechSynthesis.cancel();
+    }
+
+    // 新しい音声を作成
+    const utterance = new SpeechSynthesisUtterance(message);
+    utterance.lang = 'ja-JP';
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+
+    speechSynthRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // 直近10件の平均一致度をチェック
+  useEffect(() => {
+    // アラートインターバルをクリア
+    if (alertIntervalRef.current) {
+      clearInterval(alertIntervalRef.current);
+      alertIntervalRef.current = null;
+    }
+
+    if (status !== 'streaming' || realtimeClassifications.length === 0) {
+      setShowWarning(false);
+      return;
+    }
+
+    const validItems = realtimeClassifications.filter(item => item.text.length >= 10);
+    if (validItems.length < 3) {
+      // 最低3件のデータがないとチェックしない
+      setShowWarning(false);
+      return;
+    }
+
+    // 直近10件の平均一致度を計算
+    const recentItems = validItems.slice(-10);
+    const avgAlignment = Math.round(
+      recentItems.reduce((sum, item) => sum + item.alignment, 0) / recentItems.length
+    );
+
+    // 40%以下で画面に警告表示
+    if (avgAlignment <= 40) {
+      setShowWarning(true);
+    } else {
+      setShowWarning(false);
+    }
+
+    // 60%以下で音声アラートを20秒ごとに流す
+    if (avgAlignment <= 60) {
+      // 最初の1回を即座に再生
+      playVoiceAlert('一致度が下がっています');
+
+      // 20秒ごとに繰り返し再生
+      alertIntervalRef.current = window.setInterval(() => {
+        playVoiceAlert('一致度が下がっています');
+      }, 20000);
+    }
+
+    return () => {
+      if (alertIntervalRef.current) {
+        clearInterval(alertIntervalRef.current);
+        alertIntervalRef.current = null;
+      }
+    };
+  }, [realtimeClassifications, status]);
+
+  // ミーティングを終了してリザルト画面へ遷移
+  const handleStopMeeting = () => {
+    // 音声を停止
+    if (speechSynthRef.current) {
+      window.speechSynthesis.cancel();
+    }
+
+    // アラートインターバルを停止
+    if (alertIntervalRef.current) {
+      clearInterval(alertIntervalRef.current);
+      alertIntervalRef.current = null;
+    }
+
+    // 全ての一致度の平均を計算
+    const validItems = realtimeClassifications.filter(item => item.text.length >= 10);
+    const avgAlignment = validItems.length > 0
+      ? Math.round(validItems.reduce((sum, item) => sum + item.alignment, 0) / validItems.length)
+      : 0;
+
+    navigate('/result', {
+      state: {
+        agendaText: jobAgenda,
+        elapsedSeconds: elapsedSeconds,
+        avgAlignment: avgAlignment,
+        totalItems: validItems.length,
+      },
+    });
+  };
+
   return (
     <Layout title="MeetingPolice PoC Satomin" subtitle="アジェンダと音声をアップロードし、リアルタイム文字起こしを確認できます。">
+      {showWarning && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 9999,
+          padding: '20px 40px',
+          backgroundColor: '#ff1744',
+          color: 'white',
+          borderRadius: '12px',
+          fontSize: '1.5em',
+          fontWeight: 'bold',
+          boxShadow: '0 8px 24px rgba(255, 23, 68, 0.4)',
+          animation: 'pulse 1.5s ease-in-out infinite',
+          border: '4px solid #fff'
+        }}>
+          ⚠️ 一致度が落ちています！ ⚠️
+        </div>
+      )}
       <div className="poc-columns">
         <div className="poc-left">
           <section className="panel poc-upload">
@@ -335,7 +460,7 @@ export function PocSatominPage() {
                 {status === 'streaming' && (
                   <>
                     <p className="label">経過時間</p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                       <span
                         className="pill"
                         style={{
@@ -354,6 +479,23 @@ export function PocSatominPage() {
                         </span>
                       )}
                     </div>
+                    <button
+                      type="button"
+                      onClick={handleStopMeeting}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        backgroundColor: '#f44336',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        fontSize: '1em',
+                        fontWeight: 'bold',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      ⏹️ ミーティングを終了
+                    </button>
                   </>
                 )}
               </div>
@@ -452,52 +594,72 @@ export function PocSatominPage() {
             <div className="panel-header">
               <div>
                 <p className="label">🔍 リアルタイム分析</p>
-                <h2>
-                  {realtimeClassifications.length} 件
-                  {realtimeClassifications.length > 0 && (() => {
-                    // コメント（短い発言）を除外して平均を計算
-                    const validItems = realtimeClassifications.filter(item => item.text.length >= 10);
-                    if (validItems.length === 0) return null;
-
-                    const avgAlignment = Math.round(
-                      validItems.reduce((sum, item) => sum + item.alignment, 0) / validItems.length
-                    );
-                    const avgColor = avgAlignment >= 50 ? '#4caf50' : avgAlignment >= 30 ? '#ff9800' : '#f44336';
-                    return (
-                      <span style={{ marginLeft: '12px', fontSize: '0.9em' }}>
-                        <span className="pill" style={{ backgroundColor: avgColor, color: 'white' }}>
-                          平均一致度: {avgAlignment}%
-                        </span>
-                      </span>
-                    );
-                  })()}
-                </h2>
+                <h2>{realtimeClassifications.length} 件</h2>
               </div>
             </div>
-            <div className="transcript-feed">
-              {realtimeClassifications
-                .filter(item => item.text.length >= 10)
-                .map((item, index) => {
-                  const isFinal = item.is_final === true;
-                  const icon = isFinal ? '✅' : '📊';
-                  const bgColor = item.alignment >= 50 ? '#4caf50' : item.alignment >= 20 ? '#ff9800' : '#f44336';
 
-                  return (
-                    <article key={index} className="transcript-item">
-                      <header>
-                        <strong>{item.speaker}</strong>
-                        <span className="pill">{item.category}</span>
-                        <span className="pill" style={{ backgroundColor: bgColor }}>
-                          {icon} {item.alignment}%
-                        </span>
-                        {isFinal && <span className="pill" style={{ backgroundColor: '#2196f3', color: 'white' }}>AI確定</span>}
-                      </header>
-                      <p>{item.text}</p>
-                    </article>
-                  );
-                })}
-              {realtimeClassifications.filter(item => item.text.length >= 10).length === 0 && <p className="faded">文字起こし完了後にリアルタイム分析結果が表示されます。</p>}
-            </div>
+            {realtimeClassifications.length > 0 && (() => {
+              // コメント（短い発言）を除外
+              const validItems = realtimeClassifications.filter(item => item.text.length >= 10);
+              if (validItems.length === 0) return null;
+
+              // 直近10件の平均一致度を計算
+              const recentItems = validItems.slice(-10);
+              const avgAlignment = Math.round(
+                recentItems.reduce((sum, item) => sum + item.alignment, 0) / recentItems.length
+              );
+              const avgColor = avgAlignment >= 50 ? '#4caf50' : avgAlignment >= 30 ? '#ff9800' : '#f44336';
+
+              return (
+                <div style={{
+                  padding: '20px',
+                  textAlign: 'center',
+                  backgroundColor: '#f5f5f5',
+                  borderRadius: '8px',
+                  marginBottom: '16px'
+                }}>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '0.9em', color: '#666' }}>
+                    直近の平均一致度（最新10件）
+                  </p>
+                  <div style={{
+                    fontSize: '3em',
+                    fontWeight: 'bold',
+                    color: avgColor,
+                    lineHeight: '1'
+                  }}>
+                    {avgAlignment}%
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="panel-header">
+              <div>
+              </div>
+              <div className="transcript-feed">
+                {realtimeClassifications
+                  .filter(item => item.text.length >= 10)
+                  .map((item, index) => {
+                    const isFinal = item.is_final === true;
+                    const icon = isFinal ? '✅' : '📊';
+                    const bgColor = item.alignment >= 50 ? '#4caf50' : item.alignment >= 20 ? '#ff9800' : '#f44336';
+
+                    return (
+                      <article key={index} className="transcript-item">
+                        <header>
+                          <strong>{item.speaker}</strong>
+                          <span className="pill">{item.category}</span>
+                          <span className="pill" style={{ backgroundColor: bgColor }}>
+                            {icon} {item.alignment}%
+                          </span>
+                          {isFinal && <span className="pill" style={{ backgroundColor: '#2196f3', color: 'white' }}>AI確定</span>}
+                        </header>
+                        <p>{item.text}</p>
+                      </article>
+                    );
+                  })}
+                {realtimeClassifications.filter(item => item.text.length >= 10).length === 0 && <p className="faded">文字起こし完了後にリアルタイム分析結果が表示されます。</p>}
+              </div>
           </section>
         </div>
       </div>
