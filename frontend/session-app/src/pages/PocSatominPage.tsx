@@ -633,33 +633,30 @@ export function PocSatominPage() {
               );
             })()}
 
-            <div className="panel-header">
-              <div>
-              </div>
-              <div className="transcript-feed">
-                {realtimeClassifications
-                  .filter(item => item.text.length >= 10)
-                  .map((item, index) => {
-                    const isFinal = item.is_final === true;
-                    const icon = isFinal ? '✅' : '📊';
-                    const bgColor = item.alignment >= 50 ? '#4caf50' : item.alignment >= 20 ? '#ff9800' : '#f44336';
+            <div className="transcript-feed">
+              {realtimeClassifications
+                .filter(item => item.text.length >= 10)
+                .map((item, index) => {
+                  const isFinal = item.is_final === true;
+                  const icon = isFinal ? '✅' : '📊';
+                  const bgColor = item.alignment >= 50 ? '#4caf50' : item.alignment >= 20 ? '#ff9800' : '#f44336';
 
-                    return (
-                      <article key={index} className="transcript-item">
-                        <header>
-                          <strong>{item.speaker}</strong>
-                          <span className="pill">{item.category}</span>
-                          <span className="pill" style={{ backgroundColor: bgColor }}>
-                            {icon} {item.alignment}%
-                          </span>
-                          {isFinal && <span className="pill" style={{ backgroundColor: '#2196f3', color: 'white' }}>AI確定</span>}
-                        </header>
-                        <p>{item.text}</p>
-                      </article>
-                    );
-                  })}
-                {realtimeClassifications.filter(item => item.text.length >= 10).length === 0 && <p className="faded">文字起こし完了後にリアルタイム分析結果が表示されます。</p>}
-              </div>
+                  return (
+                    <article key={index} className="transcript-item">
+                      <header>
+                        <strong>{item.speaker}</strong>
+                        <span className="pill">{item.category}</span>
+                        <span className="pill" style={{ backgroundColor: bgColor }}>
+                          {icon} {item.alignment}%
+                        </span>
+                        {isFinal && <span className="pill" style={{ backgroundColor: '#2196f3', color: 'white' }}>AI確定</span>}
+                      </header>
+                      <p>{item.text}</p>
+                    </article>
+                  );
+                })}
+              {realtimeClassifications.filter(item => item.text.length >= 10).length === 0 && <p className="faded">文字起こし完了後にリアルタイム分析結果が表示されます。</p>}
+            </div>
           </section>
         </div>
       </div>
