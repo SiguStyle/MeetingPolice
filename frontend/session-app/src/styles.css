@@ -76,25 +76,7 @@ body::after {
   overflow: hidden;
 }
 
-/* パトランプアニメーション */
-.mp-session-layout header::before {
-  content: '🚨';
-  position: absolute;
-  top: 10px;
-  left: 20px;
-  font-size: 2rem;
-  animation: patrol-light 1s ease-in-out infinite;
-}
 
-.mp-session-layout header::after {
-  content: '🚨';
-  position: absolute;
-  top: 10px;
-  right: 20px;
-  font-size: 2rem;
-  animation: patrol-light 1s ease-in-out infinite;
-  animation-delay: 0.5s;
-}
 
 .mp-session-layout header h1 {
   font-size: 2.5rem;
@@ -106,8 +88,14 @@ body::after {
     2px 2px 0 #ff0000,
     4px 4px 0 #0000ff;
   margin: 0;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.2em;
   animation: neon-flicker 3s ease-in-out infinite;
+  font-family: 'Courier New', 'Consolas', monospace;
+  font-weight: bold;
+  image-rendering: pixelated;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+  text-transform: uppercase;
 }
 
 .panel {
@@ -734,4 +722,84 @@ span {
 
 strong {
   color: #00ff00 !important;
+}
+
+/*
+ 入力フィールドとボタンを暗くする */
+input[type="file"],
+input[type="text"] {
+  background: rgba(10, 14, 39, 0.8) !important;
+  color: #00ffff !important;
+  border: 2px solid #00ffff !important;
+}
+
+.upload-field input {
+  background: rgba(10, 14, 39, 0.8) !important;
+  color: #00ffff !important;
+  border: 2px solid #00ffff !important;
+}
+
+/* 音声プレーヤーを暗くする */
+audio {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* 全体的なテキストの色 */
+.poc-form,
+.upload-field,
+.info-text,
+.job-meta {
+  color: #00ffff !important;
+}
+
+small {
+  color: #00ffff !important;
+}
+
+/*
+ アジェンダ、文字起こし、分析のフィールドを黒くする */
+.agenda-preview,
+.transcript-feed,
+.transcript-item {
+  background: rgba(10, 14, 39, 0.9) !important;
+  color: #00ffff !important;
+}
+
+.transcript-item {
+  border: 2px solid #00ffff !important;
+}
+
+.transcript-item header {
+  color: #00ffff !important;
+}
+
+.transcript-item p {
+  color: #00ffff !important;
+}
+
+.agenda-preview pre {
+  background: rgba(10, 14, 39, 0.9) !important;
+  color: #00ffff !important;
+}
+
+/* 平均一致度の表示も暗くする */
+.panel-header+div {
+  background: rgba(10, 14, 39, 0.9) !important;
+}
+
+/* 過
+去の文字起こしにスクロールバーを追加 */
+.history-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.history-preview {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.history-transcripts {
+  max-height: 200px;
+  overflow-y: auto;
 }

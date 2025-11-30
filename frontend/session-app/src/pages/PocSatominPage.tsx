@@ -39,7 +39,7 @@ export function PocSatominPage() {
   const [history, setHistory] = useState<PocHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyPreview, setHistoryPreview] = useState<PocArchivedJob | null>(null);
-  const [realtimeClassifications, setRealtimeClassifications] = useState<Array<{ text: string; speaker: string; category: string; alignment: number; method: string; is_final?: boolean }>>([]);
+  const [realtimeClassifications, setRealtimeClassifications] = useState<Array<{ index: number; text: string; speaker: string; category: string; alignment: number; method: string; is_final?: boolean }>>([]);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [scheduledMinutes, setScheduledMinutes] = useState<number | null>(null);
   const [timerRunning, setTimerRunning] = useState<boolean>(false);
@@ -237,17 +237,18 @@ export function PocSatominPage() {
         console.log(`🔍 リアルタイム分析: ${speaker} - ${text} → [${category}] ${alignment}% (${method}${is_final ? ' 確定' : ''})`);
 
         setRealtimeClassifications((prev) => {
-          // 更新の場合、既存の項目を探して更新
-          if (action === 'update') {
-            const existingIndex = prev.findIndex((item) => item.text === text && item.speaker === speaker);
-            if (existingIndex >= 0) {
-              const updated = [...prev];
-              updated[existingIndex] = { text, speaker, category, alignment, method, is_final };
-              return updated;
-            }
+          // indexで既存の項目を探す
+          const existingIndex = prev.findIndex((item) => item.index === index);
+
+          if (existingIndex >= 0) {
+            // 既存の項目を更新
+            const updated = [...prev];
+            updated[existingIndex] = { index, text, speaker, category, alignment, method, is_final };
+            return updated;
           }
+
           // 新規追加
-          return [...prev, { text, speaker, category, alignment, method, is_final }];
+          return [...prev, { index, text, speaker, category, alignment, method, is_final }];
         });
       } else if (data.type === 'complete') {
         setStatus('complete');
@@ -329,13 +330,12 @@ export function PocSatominPage() {
 
   // 直近10件の平均一致度をチェック
   useEffect(() => {
-    // アラートインターバルをクリア
-    if (alertIntervalRef.current) {
-      clearInterval(alertIntervalRef.current);
-      alertIntervalRef.current = null;
-    }
-
     if (status !== 'streaming' || realtimeClassifications.length === 0) {
+      // ストリーミング中でない場合はアラートをクリア
+      if (alertIntervalRef.current) {
+        clearInterval(alertIntervalRef.current);
+        alertIntervalRef.current = null;
+      }
       setShowWarning(false);
       return;
     }
@@ -361,23 +361,31 @@ export function PocSatominPage() {
     }
 
     // 60%以下で音声アラートを20秒ごとに流す
-    if (avgAlignment <= 60) {
-      // 最初の1回を即座に再生
-      playVoiceAlert('一致度が下がっています');
+    const shouldAlert = avgAlignment <= 60;
+    const isAlertActive = alertIntervalRef.current !== null;
 
-      // 20秒ごとに繰り返し再生
+    if (shouldAlert && !isAlertActive) {
+      // アラートを開始
+      playVoiceAlert('一致度が下がっています');
       alertIntervalRef.current = window.setInterval(() => {
         playVoiceAlert('一致度が下がっています');
       }, 20000);
+    } else if (!shouldAlert && isAlertActive) {
+      // アラートを停止
+      clearInterval(alertIntervalRef.current);
+      alertIntervalRef.current = null;
     }
+  }, [realtimeClassifications, status]);
 
+  // クリーンアップ
+  useEffect(() => {
     return () => {
       if (alertIntervalRef.current) {
         clearInterval(alertIntervalRef.current);
         alertIntervalRef.current = null;
       }
     };
-  }, [realtimeClassifications, status]);
+  }, []);
 
   // ミーティングを終了してリザルト画面へ遷移
   const handleStopMeeting = () => {
@@ -457,7 +465,7 @@ export function PocSatominPage() {
                 <code>{jobId}</code>
                 <p className="label">ステータス</p>
                 <span className={`pill ${status}`}>{status}</span>
-                {status === 'streaming' && (
+                {(status === 'streaming' || status === 'complete') && (
                   <>
                     <p className="label">経過時間</p>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
@@ -591,10 +599,10 @@ export function PocSatominPage() {
           </section>
 
           <section className="panel">
-            <div className="panel-header">
-              <div>
-                <p className="label">🔍 リアルタイム分析</p>
-                <h2>{realtimeClassifications.length} 件</h2>
+            <div className="panel-header" style={{ flexWrap: 'nowrap', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'nowrap' }}>
+                <p className="label" style={{ margin: 0, whiteSpace: 'nowrap' }}>🔍 リアルタイム分析</p>
+                <h2 style={{ margin: 0, whiteSpace: 'nowrap' }}>{realtimeClassifications.length} 件</h2>
               </div>
             </div>
 
@@ -633,7 +641,7 @@ export function PocSatominPage() {
               );
             })()}
 
-            <div className="transcript-feed">
+            <div className="transcript-feed" style={{ maxHeight: '500px', overflowY: 'auto' }}>
               {realtimeClassifications
                 .filter(item => item.text.length >= 10)
                 .map((item, index) => {
