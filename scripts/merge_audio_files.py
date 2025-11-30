@@ -94,9 +94,10 @@ def merge_audio_files(input_files: list[Path], output_file: Path, silence_durati
 
 def main():
     parser = argparse.ArgumentParser(description="複数の音声ファイルを結合")
-    parser.add_argument("input_files", nargs="*", help="結合する音声ファイル（順番通り）")
+    parser.add_argument("input_files", nargs="*", help="結合する音声ファイル（順番通り）またはフォルダパス")
     parser.add_argument("-o", "--output", help="出力ファイル名")
     parser.add_argument("-s", "--silence", type=float, default=1.5, help="音声間の無音時間（秒）")
+    parser.add_argument("--sort-by-time", action="store_true", help="更新日時が古い順にソート")
     
     args = parser.parse_args()
     
@@ -107,7 +108,19 @@ def main():
     
     # 引数が指定されている場合
     if args.input_files:
-        input_files = [Path(f) for f in args.input_files]
+        # 単一の引数でフォルダが指定された場合
+        if len(args.input_files) == 1:
+            input_path = Path(args.input_files[0])
+            if input_path.is_dir():
+                input_files = list(input_path.glob("*.wav"))
+                if not input_files:
+                    print(f"❌ エラー: {input_path} に音声ファイル（.wav）が見つかりません")
+                    return
+            else:
+                input_files = [input_path]
+        else:
+            input_files = [Path(f) for f in args.input_files]
+        
         output_file = Path(args.output) if args.output else Path("backend/data/merged_audio.wav")
         
         # ファイルの存在確認
@@ -117,6 +130,11 @@ def main():
             for f in missing_files:
                 print(f"  - {f}")
             return
+        
+        # 更新日時でソート
+        if args.sort_by_time:
+            input_files = sorted(input_files, key=lambda f: f.stat().st_mtime)
+            print("📅 更新日時が古い順にソートしました\n")
         
         print(f"📄 入力ファイル:")
         for i, file in enumerate(input_files, 1):

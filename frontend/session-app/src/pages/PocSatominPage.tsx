@@ -351,8 +351,8 @@ export function PocSatominPage() {
       recentItems.reduce((sum, item) => sum + item.alignment, 0) / recentItems.length
     );
 
-    // 40%以下で画面に警告表示
-    if (avgAlignment <= 40) {
+    // 60%以下で画面に警告表示
+    if (avgAlignment <= 60) {
       setShowWarning(true);
     } else {
       setShowWarning(false);

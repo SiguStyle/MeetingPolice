@@ -369,6 +369,52 @@ class POCController:
         friendly = self._speaker_name(job, raw_label)
         return friendly, (raw_label or "spk_unk")
 
+    def _split_long_text(self, text: str, max_length: int = 100) -> list[str]:
+        """長い文を句読点で分割する"""
+        if len(text) <= max_length:
+            return [text]
+        
+        # 句読点で分割
+        import re
+        sentences = re.split(r'([。！？])', text)
+        
+        # 句読点を前の文に結合
+        result = []
+        current = ""
+        for i, part in enumerate(sentences):
+            if part in ['。', '！', '？']:
+                current += part
+                if current.strip():
+                    result.append(current.strip())
+                current = ""
+            else:
+                current += part
+        
+        # 残りがあれば追加
+        if current.strip():
+            result.append(current.strip())
+        
+        # それでも長い場合は、読点で分割
+        final_result = []
+        for sentence in result:
+            if len(sentence) <= max_length:
+                final_result.append(sentence)
+            else:
+                # 読点で分割
+                parts = re.split(r'([、,])', sentence)
+                temp = ""
+                for part in parts:
+                    if len(temp + part) <= max_length:
+                        temp += part
+                    else:
+                        if temp.strip():
+                            final_result.append(temp.strip())
+                        temp = part
+                if temp.strip():
+                    final_result.append(temp.strip())
+        
+        return [s for s in final_result if s]
+
     async def _handle_result(self, job: PocJob, result_id: str, speaker_label: str, raw_label: str, text: str, is_final: bool) -> None:
         entry = job.pending_results.get(result_id)
         if not entry:
@@ -387,8 +433,10 @@ class POCController:
             if entry["text"] == text and entry["speaker"] == speaker_label:
                 if is_final:
                     await self._finalize_result(job, result_id)
-                    # 最終結果が出たら、すぐに分析開始
-                    asyncio.create_task(self.classify_realtime(job.job_id, text, speaker_label, entry["index"]))
+                    # 最終結果が出たら、長い文を分割して分析
+                    split_texts = self._split_long_text(text)
+                    for split_text in split_texts:
+                        asyncio.create_task(self.classify_realtime(job.job_id, split_text, speaker_label, entry["index"]))
                 return
             entry["text"] = text
             entry["speaker"] = speaker_label
@@ -398,8 +446,10 @@ class POCController:
         # 最終結果が出たら、必ず分析を実行
         if is_final:
             await self._finalize_result(job, result_id)
-            # リアルタイム分析を開始
-            asyncio.create_task(self.classify_realtime(job.job_id, entry["text"], entry["speaker"], entry["index"]))
+            # 長い文を分割してリアルタイム分析を開始
+            split_texts = self._split_long_text(entry["text"])
+            for split_text in split_texts:
+                asyncio.create_task(self.classify_realtime(job.job_id, split_text, entry["speaker"], entry["index"]))
 
     async def _finalize_result(self, job: PocJob, result_id: str) -> None:
         entry = job.pending_results.pop(result_id, None)
