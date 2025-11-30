@@ -37,6 +37,7 @@ class PocJob:
     pending_results: dict[str, dict[str, Any]] = field(default_factory=dict)
     processed_result_ids: set[str] = field(default_factory=set)
     classified_segments: list[dict[str, Any]] = field(default_factory=list)
+    pending_bedrock_tasks: set[asyncio.Task] = field(default_factory=set)
 
 
 class POCController:
@@ -132,7 +133,9 @@ class POCController:
         await job.queue.put({"type": "realtime_classification", "payload": result_quick})
         
         # ステップ2: バックグラウンドでBedrockに送信（非同期）
-        asyncio.create_task(self._classify_with_bedrock(job, text, speaker, index))
+        task = asyncio.create_task(self._classify_with_bedrock(job, text, speaker, index))
+        job.pending_bedrock_tasks.add(task)
+        task.add_done_callback(lambda t: job.pending_bedrock_tasks.discard(t))
         
         return result_quick
 
@@ -194,8 +197,12 @@ class POCController:
             asyncio.create_task(self.classify_realtime(job.job_id, line, payload["speaker"], idx))
             await asyncio.sleep(1.2)
         
-        # 全ての分析が完了するまで少し待つ
-        await asyncio.sleep(3)
+        # 全てのBedrock分析タスクが完了するまで待つ
+        print(f"⏳ Bedrock分析タスク待機中... 残り: {len(job.pending_bedrock_tasks)}件")
+        while job.pending_bedrock_tasks:
+            await asyncio.sleep(0.5)
+            print(f"⏳ まだ待機中... 残り: {len(job.pending_bedrock_tasks)}件")
+        print(f"✅ 全てのBedrock分析が完了しました！")
         
         job.status = "completed"
         transcript_path.write_text(json.dumps(job.transcripts, ensure_ascii=False, indent=2), encoding="utf-8")
