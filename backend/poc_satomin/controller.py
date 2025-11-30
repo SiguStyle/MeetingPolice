@@ -81,6 +81,13 @@ class POCController:
     #最終結果が出たら分析開始する
     async def classify_realtime(self, job_id: str, text: str, speaker: str, index: int) -> dict[str, Any]:
         """リアルタイムで1つの発言を簡易分析（ハイブリッド方式）"""
+        # 10文字未満の短い発言は分析しない
+        text_stripped = text.strip()
+        print(f"🔍 文字数チェック: '{text_stripped}' → len={len(text_stripped)}")
+        if len(text_stripped) < 10:
+            print(f"  ✋ 10文字未満のためスキップ！")
+            return {}
+        
         print(f"📊 リアルタイム分析開始: {speaker} - {text[:30]}...")
         self.logger.info(f"📊 リアルタイム分析開始: {speaker} - {text[:30]}...")
         job = self.get_job(job_id)
@@ -91,12 +98,6 @@ class POCController:
         # 「Agenda topic:」で始まる発言は全てスキップ
         if text.startswith("Agenda topic:"):
             print(f"  → メタ情報のためスキップ: {text[:30]}...")
-            return {}
-        
-        # コメント（短い感想や挨拶）もスキップ
-        comment_keywords = ["ありがとう", "お疲れ", "了解", "はい", "すみません", "失礼"]
-        if len(text) < 15 and any(keyword in text for keyword in comment_keywords):
-            print(f"  → コメントのためスキップ: {text[:30]}...")
             return {}
         
         # 「Discussion:」の後に続く内容をチェック

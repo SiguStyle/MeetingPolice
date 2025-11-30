@@ -455,8 +455,12 @@ export function PocSatominPage() {
                 <h2>
                   {realtimeClassifications.length} 件
                   {realtimeClassifications.length > 0 && (() => {
+                    // コメント（短い発言）を除外して平均を計算
+                    const validItems = realtimeClassifications.filter(item => item.text.length >= 10);
+                    if (validItems.length === 0) return null;
+
                     const avgAlignment = Math.round(
-                      realtimeClassifications.reduce((sum, item) => sum + item.alignment, 0) / realtimeClassifications.length
+                      validItems.reduce((sum, item) => sum + item.alignment, 0) / validItems.length
                     );
                     const avgColor = avgAlignment >= 50 ? '#4caf50' : avgAlignment >= 30 ? '#ff9800' : '#f44336';
                     return (
@@ -471,26 +475,28 @@ export function PocSatominPage() {
               </div>
             </div>
             <div className="transcript-feed">
-              {realtimeClassifications.map((item, index) => {
-                const isFinal = item.is_final === true;
-                const icon = isFinal ? '✅' : '📊';
-                const bgColor = item.alignment >= 50 ? '#4caf50' : item.alignment >= 20 ? '#ff9800' : '#f44336';
+              {realtimeClassifications
+                .filter(item => item.text.length >= 10)
+                .map((item, index) => {
+                  const isFinal = item.is_final === true;
+                  const icon = isFinal ? '✅' : '📊';
+                  const bgColor = item.alignment >= 50 ? '#4caf50' : item.alignment >= 20 ? '#ff9800' : '#f44336';
 
-                return (
-                  <article key={index} className="transcript-item">
-                    <header>
-                      <strong>{item.speaker}</strong>
-                      <span className="pill">{item.category}</span>
-                      <span className="pill" style={{ backgroundColor: bgColor }}>
-                        {icon} {item.alignment}%
-                      </span>
-                      {isFinal && <span className="pill" style={{ backgroundColor: '#2196f3', color: 'white' }}>AI確定</span>}
-                    </header>
-                    <p>{item.text}</p>
-                  </article>
-                );
-              })}
-              {realtimeClassifications.length === 0 && <p className="faded">文字起こし完了後にリアルタイム分析結果が表示されます。</p>}
+                  return (
+                    <article key={index} className="transcript-item">
+                      <header>
+                        <strong>{item.speaker}</strong>
+                        <span className="pill">{item.category}</span>
+                        <span className="pill" style={{ backgroundColor: bgColor }}>
+                          {icon} {item.alignment}%
+                        </span>
+                        {isFinal && <span className="pill" style={{ backgroundColor: '#2196f3', color: 'white' }}>AI確定</span>}
+                      </header>
+                      <p>{item.text}</p>
+                    </article>
+                  );
+                })}
+              {realtimeClassifications.filter(item => item.text.length >= 10).length === 0 && <p className="faded">文字起こし完了後にリアルタイム分析結果が表示されます。</p>}
             </div>
           </section>
         </div>
