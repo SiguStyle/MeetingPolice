@@ -468,8 +468,21 @@ class POCController:
                     break
         if not source.strip():
             return ""
-        first_line = source.splitlines()[0].strip()
-        cleaned = re.sub(r"[\s　]+", "-", first_line)
+        
+        # アジェンダから議題タイトルを抽出
+        lines = source.splitlines()
+        title_line = ""
+        for i, line in enumerate(lines):
+            # 「・議題タイトル」の次の行を取得
+            if "議題タイトル" in line and i + 1 < len(lines):
+                title_line = lines[i + 1].strip()
+                break
+        
+        # 議題タイトルが見つからない場合は最初の行を使用
+        if not title_line:
+            title_line = lines[0].strip()
+        
+        cleaned = re.sub(r"[\s　]+", "-", title_line)
         cleaned = re.sub(r"[^0-9A-Za-zぁ-んァ-ヶ一-龠ー_-]", "", cleaned)
         cleaned = cleaned.strip("-_")
         return cleaned[:40]

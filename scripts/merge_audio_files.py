@@ -5,6 +5,7 @@ Google Text-to-Speechなどでダウンロードした音声を1つにまとめ�
 """
 from __future__ import annotations
 
+import argparse
 import wave
 from pathlib import Path
 
@@ -92,15 +93,45 @@ def merge_audio_files(input_files: list[Path], output_file: Path, silence_durati
 
 
 def main():
+    parser = argparse.ArgumentParser(description="複数の音声ファイルを結合")
+    parser.add_argument("input_files", nargs="*", help="結合する音声ファイル（順番通り）")
+    parser.add_argument("-o", "--output", help="出力ファイル名")
+    parser.add_argument("-s", "--silence", type=float, default=1.5, help="音声間の無音時間（秒）")
+    
+    args = parser.parse_args()
+    
     print("=" * 60)
     print("🎤 音声ファイル結合ツール")
     print("=" * 60)
     print()
     
-    # 入力ファイルのディレクトリ
-    input_dir = Path("backend/data/audio_parts")
+    # 引数が指定されている場合
+    if args.input_files:
+        input_files = [Path(f) for f in args.input_files]
+        output_file = Path(args.output) if args.output else Path("backend/data/merged_audio.wav")
+        
+        # ファイルの存在確認
+        missing_files = [f for f in input_files if not f.exists()]
+        if missing_files:
+            print(f"❌ エラー: 以下のファイルが見つかりません:")
+            for f in missing_files:
+                print(f"  - {f}")
+            return
+        
+        print(f"📄 入力ファイル:")
+        for i, file in enumerate(input_files, 1):
+            print(f"  {i}. {file}")
+        print()
+        
+        # 結合実行
+        merge_audio_files(input_files, output_file, silence_duration=args.silence)
+        
+        print()
+        print("✨ 完成！")
+        return
     
-    # 出力ファイル
+    # 引数なしの場合はデフォルト動作
+    input_dir = Path("backend/data/audio_parts")
     output_file = Path("backend/data/test_meeting_audio.wav")
     
     # 入力ファイルを探す

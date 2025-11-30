@@ -42,12 +42,10 @@ export function PocSatominPage() {
   const [realtimeClassifications, setRealtimeClassifications] = useState<Array<{ index: number; text: string; speaker: string; category: string; alignment: number; method: string; is_final?: boolean }>>([]);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [scheduledMinutes, setScheduledMinutes] = useState<number | null>(null);
-  const [timerRunning, setTimerRunning] = useState<boolean>(false);
   const [showWarning, setShowWarning] = useState<boolean>(false);
   const wsRef = useRef<WebSocket | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<number | null>(null);
-  const lastAlertTimeRef = useRef<number>(0);
   const speechSynthRef = useRef<SpeechSynthesisUtterance | null>(null);
   const alertIntervalRef = useRef<number | null>(null);
 
@@ -412,6 +410,7 @@ export function PocSatominPage() {
         elapsedSeconds: elapsedSeconds,
         avgAlignment: avgAlignment,
         totalItems: validItems.length,
+        scheduledMinutes: scheduledMinutes,
       },
     });
   };
@@ -492,14 +491,7 @@ export function PocSatominPage() {
                       onClick={handleStopMeeting}
                       style={{
                         width: '100%',
-                        padding: '12px',
-                        backgroundColor: '#f44336',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        fontSize: '1em',
-                        fontWeight: 'bold',
-                        cursor: 'pointer'
+                        color: '#ff4444'
                       }}
                     >
                       ⏹️ ミーティングを終了
@@ -622,11 +614,12 @@ export function PocSatominPage() {
                 <div style={{
                   padding: '20px',
                   textAlign: 'center',
-                  backgroundColor: '#f5f5f5',
+                  backgroundColor: 'rgba(255, 255, 255, 0.3)',
                   borderRadius: '8px',
-                  marginBottom: '16px'
+                  marginBottom: '16px',
+                  border: '2px solid #00ffff'
                 }}>
-                  <p style={{ margin: '0 0 8px 0', fontSize: '0.9em', color: '#666' }}>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '0.9em', color: '#00ffff' }}>
                     直近の平均一致度（最新10件）
                   </p>
                   <div style={{

@@ -7,6 +7,7 @@ interface ResultData {
     elapsedSeconds: number;
     avgAlignment: number;
     totalItems: number;
+    scheduledMinutes?: number;
 }
 
 export function ResultPage() {
@@ -28,7 +29,7 @@ export function ResultPage() {
         return <Layout title="読み込み中..." subtitle=""><div>読み込み中...</div></Layout>;
     }
 
-    const { agendaText, elapsedSeconds, avgAlignment, totalItems } = resultData;
+    const { agendaText, elapsedSeconds, avgAlignment, totalItems, scheduledMinutes } = resultData;
     const minutes = Math.floor(elapsedSeconds / 60);
     const seconds = elapsedSeconds % 60;
     const isSuccess = avgAlignment >= 60;
@@ -63,25 +64,32 @@ export function ResultPage() {
                         }}>
                             <div style={{
                                 padding: '20px',
-                                backgroundColor: '#f5f5f5',
+                                backgroundColor: 'rgba(10, 14, 39, 0.9)',
                                 borderRadius: '8px',
-                                textAlign: 'center'
+                                textAlign: 'center',
+                                border: '2px solid #00ffff'
                             }}>
-                                <p style={{ margin: '0 0 8px 0', fontSize: '0.9em', color: '#666' }}>
+                                <p style={{ margin: '0 0 8px 0', fontSize: '0.9em', color: '#00ffff' }}>
                                     ⏱️ 経過時間
                                 </p>
-                                <div style={{ fontSize: '2.5em', fontWeight: 'bold', color: '#333' }}>
+                                <div style={{ fontSize: '2.5em', fontWeight: 'bold', color: '#00ffff' }}>
                                     {minutes}:{seconds.toString().padStart(2, '0')}
                                 </div>
+                                {scheduledMinutes && (
+                                    <p style={{ margin: '8px 0 0 0', fontSize: '0.9em', color: '#00ffff' }}>
+                                        / {scheduledMinutes}分
+                                    </p>
+                                )}
                             </div>
 
                             <div style={{
                                 padding: '20px',
-                                backgroundColor: '#f5f5f5',
+                                backgroundColor: 'rgba(10, 14, 39, 0.9)',
                                 borderRadius: '8px',
-                                textAlign: 'center'
+                                textAlign: 'center',
+                                border: '2px solid #00ffff'
                             }}>
-                                <p style={{ margin: '0 0 8px 0', fontSize: '0.9em', color: '#666' }}>
+                                <p style={{ margin: '0 0 8px 0', fontSize: '0.9em', color: '#00ffff' }}>
                                     📈 平均一致度
                                 </p>
                                 <div style={{
@@ -91,7 +99,7 @@ export function ResultPage() {
                                 }}>
                                     {avgAlignment}%
                                 </div>
-                                <p style={{ margin: '8px 0 0 0', fontSize: '0.85em', color: '#666' }}>
+                                <p style={{ margin: '8px 0 0 0', fontSize: '0.85em', color: '#00ffff' }}>
                                     （全{totalItems}件の発言）
                                 </p>
                             </div>
@@ -99,16 +107,18 @@ export function ResultPage() {
 
                         <div style={{
                             padding: '20px',
-                            backgroundColor: '#f9f9f9',
+                            backgroundColor: 'rgba(10, 14, 39, 0.9)',
                             borderRadius: '8px',
-                            marginBottom: '16px'
+                            marginBottom: '16px',
+                            border: '2px solid #00ffff'
                         }}>
-                            <h3 style={{ marginTop: 0 }}>📝 アジェンダ</h3>
+                            <h3 style={{ marginTop: 0, color: '#00ffff' }}>📝 アジェンダ</h3>
                             <pre style={{
                                 whiteSpace: 'pre-wrap',
                                 fontSize: '0.95em',
                                 lineHeight: '1.6',
-                                margin: 0
+                                margin: 0,
+                                color: '#00ffff'
                             }}>
                                 {agendaText || '（アジェンダなし）'}
                             </pre>
@@ -117,20 +127,22 @@ export function ResultPage() {
                         {isSuccess ? (
                             <div style={{
                                 padding: '16px',
-                                backgroundColor: '#e8f5e9',
+                                backgroundColor: 'rgba(76, 175, 80, 0.2)',
                                 borderRadius: '8px',
-                                color: '#2e7d32',
-                                textAlign: 'center'
+                                color: '#00ff00',
+                                textAlign: 'center',
+                                border: '2px solid #00ff00'
                             }}>
                                 <strong>素晴らしい！</strong> アジェンダに沿った議論ができました 👏
                             </div>
                         ) : (
                             <div style={{
                                 padding: '16px',
-                                backgroundColor: '#fff3e0',
+                                backgroundColor: 'rgba(255, 152, 0, 0.2)',
                                 borderRadius: '8px',
-                                color: '#e65100',
-                                textAlign: 'center'
+                                color: '#ff9800',
+                                textAlign: 'center',
+                                border: '2px solid #ff9800'
                             }}>
                                 次回はもっとアジェンダに沿った議論を心がけましょう 💪
                             </div>
