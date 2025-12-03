@@ -8,6 +8,8 @@ interface ResultData {
     avgAlignment: number;
     totalItems: number;
     scheduledMinutes?: number;
+    speakerCounts?: { [key: string]: number };
+    speakerNames?: { [key: string]: string };
 }
 
 export function ResultPage() {
@@ -19,7 +21,7 @@ export function ResultPage() {
         const data = location.state as ResultData;
         if (!data) {
             // データがない場合は元のページに戻る
-            navigate('/poc-satomin');
+            navigate('/poc_satomin');
             return;
         }
         setResultData(data);
@@ -29,10 +31,20 @@ export function ResultPage() {
         return <Layout title="読み込み中..." subtitle=""><div>読み込み中...</div></Layout>;
     }
 
-    const { agendaText, elapsedSeconds, avgAlignment, totalItems, scheduledMinutes } = resultData;
+    const { agendaText, elapsedSeconds, avgAlignment, totalItems, scheduledMinutes, speakerCounts, speakerNames } = resultData;
     const minutes = Math.floor(elapsedSeconds / 60);
     const seconds = elapsedSeconds % 60;
     const isSuccess = avgAlignment >= 60;
+
+    // 話者別発言割合を計算
+    const speakerStats = speakerCounts ? Object.entries(speakerCounts).map(([speaker, count]) => {
+        const totalCount = Object.values(speakerCounts).reduce((sum, c) => sum + c, 0);
+        return {
+            speaker,
+            count,
+            percentage: Math.round((count / totalCount) * 100)
+        };
+    }).sort((a, b) => b.count - a.count) : [];
 
     return (
         <Layout title="ミーティング結果" subtitle="お疲れさまでした！">
@@ -48,7 +60,7 @@ export function ResultPage() {
                         fontSize: '2em',
                         fontWeight: 'bold'
                     }}>
-                        🎉 おめでとう！ 🎉
+                        ✨ 🪩 🎉 おめでとう！ 🎉 🪩 ✨
                     </div>
                 )}
 
@@ -105,6 +117,44 @@ export function ResultPage() {
                             </div>
                         </div>
 
+                        {speakerStats.length > 0 && (
+                            <div style={{
+                                padding: '20px',
+                                backgroundColor: 'rgba(10, 14, 39, 0.9)',
+                                borderRadius: '8px',
+                                marginBottom: '16px',
+                                border: '2px solid #00ffff'
+                            }}>
+                                <h3 style={{ marginTop: 0, color: '#00ffff' }}>👥 話者別発言割合</h3>
+                                {speakerStats.map(({ speaker, count, percentage }) => {
+                                    const barColor = percentage >= 85 ? '#ff4444' : percentage >= 70 ? '#ffaa00' : '#00ff00';
+                                    const displayName = speakerNames?.[speaker] || speaker;
+
+                                    return (
+                                        <div key={speaker} style={{ marginBottom: '12px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                <span style={{ color: '#00ffff', fontSize: '0.9em' }}>{displayName}</span>
+                                                <span style={{ color: barColor, fontSize: '0.9em', fontWeight: 'bold' }}>{percentage}%</span>
+                                            </div>
+                                            <div style={{
+                                                width: '100%',
+                                                height: '8px',
+                                                backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                                                borderRadius: '4px',
+                                                overflow: 'hidden'
+                                            }}>
+                                                <div style={{
+                                                    width: `${percentage}%`,
+                                                    height: '100%',
+                                                    backgroundColor: barColor
+                                                }} />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+
                         <div style={{
                             padding: '20px',
                             backgroundColor: 'rgba(10, 14, 39, 0.9)',
@@ -153,7 +203,7 @@ export function ResultPage() {
                 <div style={{ textAlign: 'center' }}>
                     <button
                         type="button"
-                        onClick={() => navigate('/poc-satomin')}
+                        onClick={() => navigate('/poc_satomin')}
                         style={{
                             padding: '12px 32px',
                             fontSize: '1.1em',

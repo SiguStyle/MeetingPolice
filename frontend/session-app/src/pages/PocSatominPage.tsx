@@ -43,6 +43,7 @@ export function PocSatominPage() {
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [scheduledMinutes, setScheduledMinutes] = useState<number | null>(null);
   const [showWarning, setShowWarning] = useState<boolean>(false);
+  const [speakerNames, setSpeakerNames] = useState<{ [key: string]: string }>({});
   const wsRef = useRef<WebSocket | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -334,6 +335,10 @@ export function PocSatominPage() {
         clearInterval(alertIntervalRef.current);
         alertIntervalRef.current = null;
       }
+      // 音声合成も停止
+      if (speechSynthRef.current) {
+        window.speechSynthesis.cancel();
+      }
       setShowWarning(false);
       return;
     }
@@ -369,9 +374,12 @@ export function PocSatominPage() {
         playVoiceAlert('一致度が下がっています');
       }, 20000);
     } else if (!shouldAlert && isAlertActive) {
-      // アラートを停止
+      // アラートを停止（インターバルと音声合成の両方）
       clearInterval(alertIntervalRef.current);
       alertIntervalRef.current = null;
+      if (speechSynthRef.current) {
+        window.speechSynthesis.cancel();
+      }
     }
   }, [realtimeClassifications, status]);
 
@@ -404,6 +412,12 @@ export function PocSatominPage() {
       ? Math.round(validItems.reduce((sum, item) => sum + item.alignment, 0) / validItems.length)
       : 0;
 
+    // 話者ごとの発言回数を計算
+    const speakerCounts: { [key: string]: number } = {};
+    transcripts.forEach(item => {
+      speakerCounts[item.speaker] = (speakerCounts[item.speaker] || 0) + 1;
+    });
+
     navigate('/result', {
       state: {
         agendaText: jobAgenda,
@@ -411,6 +425,8 @@ export function PocSatominPage() {
         avgAlignment: avgAlignment,
         totalItems: validItems.length,
         scheduledMinutes: scheduledMinutes,
+        speakerCounts: speakerCounts,
+        speakerNames: speakerNames,
       },
     });
   };
@@ -453,9 +469,24 @@ export function PocSatominPage() {
                 <input type="file" accept="audio/*" onChange={(event) => setAudioFile(event.target.files?.[0] ?? null)} required />
                 {audioFile && <small>{audioFile.name}</small>}
               </label>
-              <button type="submit" disabled={status === 'streaming'}>
-                {status === 'streaming' ? '文字起こし中…' : '文字起こしを開始'}
-              </button>
+              {status === 'idle' ? (
+                <button type="submit">
+                  文字起こしを開始
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleStopMeeting}
+                  style={{
+                    width: '100%',
+                    backgroundColor: 'rgba(255, 68, 68, 0.3)',
+                    borderColor: '#ff4444',
+                    color: '#ff4444'
+                  }}
+                >
+                  ⏹️ ミーティングを終了
+                </button>
+              )}
             </form>
             {message && <p className="info-text">{message}</p>}
             {jobId && (
@@ -464,6 +495,7 @@ export function PocSatominPage() {
                 <code>{jobId}</code>
                 <p className="label">ステータス</p>
                 <span className={`pill ${status}`}>{status}</span>
+                {/* 経過時間表示（将来的に使用する可能性があるためコメントアウト）
                 {(status === 'streaming' || status === 'complete') && (
                   <>
                     <p className="label">経過時間</p>
@@ -486,18 +518,9 @@ export function PocSatominPage() {
                         </span>
                       )}
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleStopMeeting}
-                      style={{
-                        width: '100%',
-                        color: '#ff4444'
-                      }}
-                    >
-                      ⏹️ ミーティングを終了
-                    </button>
                   </>
                 )}
+                */}
               </div>
             )}
             {audioPreviewUrl && (
@@ -530,7 +553,7 @@ export function PocSatominPage() {
             {history.length === 0 && <p className="faded">これまでのアーカイブはまだありません。</p>}
             {history.length > 0 && (
               <div className="history-list">
-                {history.map((item) => (
+                {[...history].reverse().map((item) => (
                   <article key={item.job_id} className="history-item">
                     <div>
                       <strong>{item.archive_name || item.job_id}</strong>
@@ -569,10 +592,10 @@ export function PocSatominPage() {
 
         <div className="poc-right">
           <section className="panel transcript-panel">
-            <div className="panel-header">
-              <div>
-                <p className="label">リアルタイム文字起こし</p>
-                <h2>{transcripts.length} 行</h2>
+            <div className="panel-header" style={{ flexWrap: 'nowrap', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'nowrap' }}>
+                <p className="label" style={{ margin: 0, whiteSpace: 'nowrap' }}>リアルタイム文字起こし</p>
+                <h2 style={{ margin: 0, whiteSpace: 'nowrap' }}>{transcripts.length} 行</h2>
               </div>
             </div>
             <div className="transcript-feed">
@@ -598,6 +621,81 @@ export function PocSatominPage() {
               </div>
             </div>
 
+            {transcripts.length > 0 && (() => {
+              // 話者ごとの発言回数を計算
+              const speakerCounts: { [key: string]: number } = {};
+              transcripts.forEach(item => {
+                speakerCounts[item.speaker] = (speakerCounts[item.speaker] || 0) + 1;
+              });
+
+              const totalCount = transcripts.length;
+              const speakerStats = Object.entries(speakerCounts).map(([speaker, count]) => ({
+                speaker,
+                count,
+                percentage: Math.round((count / totalCount) * 100)
+              })).sort((a, b) => b.count - a.count);
+
+              return (
+                <div style={{
+                  padding: '15px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.3)',
+                  borderRadius: '8px',
+                  marginBottom: '16px',
+                  border: '2px solid #00ffff'
+                }}>
+                  <p style={{ margin: '0 0 12px 0', fontSize: '0.9em', color: '#00ffff', fontWeight: 'bold' }}>
+                    👥 話者別発言割合
+                  </p>
+                  {speakerStats.map(({ speaker, count, percentage }) => {
+                    // バーの色を決定（70%超で黄色、85%超で赤）
+                    const barColor = percentage >= 85 ? '#ff4444' : percentage >= 70 ? '#ffaa00' : '#00ff00';
+
+                    return (
+                      <div key={speaker} style={{ marginBottom: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ color: '#00ffff', fontSize: '0.9em' }}>
+                              {speaker}
+                            </span>
+                            <input
+                              type="text"
+                              placeholder="名前を入力"
+                              value={speakerNames[speaker] || ''}
+                              onChange={(e) => setSpeakerNames({ ...speakerNames, [speaker]: e.target.value })}
+                              style={{
+                                width: '120px',
+                                padding: '4px 8px',
+                                fontSize: '0.8em',
+                                backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                                border: '1px solid #00ffff',
+                                borderRadius: '4px',
+                                color: '#00ffff'
+                              }}
+                            />
+                          </div>
+                          <span style={{ color: barColor, fontSize: '0.9em', fontWeight: 'bold' }}>{percentage}%</span>
+                        </div>
+                        <div style={{
+                          width: '100%',
+                          height: '8px',
+                          backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                          borderRadius: '4px',
+                          overflow: 'hidden'
+                        }}>
+                          <div style={{
+                            width: `${percentage}%`,
+                            height: '100%',
+                            backgroundColor: barColor,
+                            transition: 'width 0.3s ease, background-color 0.3s ease'
+                          }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
             {realtimeClassifications.length > 0 && (() => {
               // コメント（短い発言）を除外
               const validItems = realtimeClassifications.filter(item => item.text.length >= 10);
@@ -608,7 +706,7 @@ export function PocSatominPage() {
               const avgAlignment = Math.round(
                 recentItems.reduce((sum, item) => sum + item.alignment, 0) / recentItems.length
               );
-              const avgColor = avgAlignment >= 50 ? '#4caf50' : avgAlignment >= 30 ? '#ff9800' : '#f44336';
+              const avgColor = avgAlignment > 60 ? '#4caf50' : avgAlignment > 40 ? '#ff9800' : '#f44336';
 
               return (
                 <div style={{

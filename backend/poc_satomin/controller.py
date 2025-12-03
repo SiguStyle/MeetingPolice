@@ -369,49 +369,52 @@ class POCController:
         friendly = self._speaker_name(job, raw_label)
         return friendly, (raw_label or "spk_unk")
 
-    def _split_long_text(self, text: str, max_length: int = 100) -> list[str]:
-        """長い文を句読点で分割する"""
+    def _split_long_text(self, text: str, max_length: int = 80, min_length: int = 25) -> list[str]:
+        """長い文を句読点で分割する（短すぎる文は結合）"""
         if len(text) <= max_length:
             return [text]
         
-        # 句読点で分割
         import re
-        sentences = re.split(r'([。！？])', text)
+        
+        # 句読点で分割（句読点も含める）
+        parts = re.split(r'(。|！|？)', text)
         
         # 句読点を前の文に結合
+        sentences = []
+        for i in range(0, len(parts), 2):
+            sentence = parts[i]
+            if i + 1 < len(parts):
+                sentence += parts[i + 1]  # 句読点を追加
+            if sentence.strip():
+                sentences.append(sentence.strip())
+        
+        # 長い文は読点でさらに分割
         result = []
-        current = ""
-        for i, part in enumerate(sentences):
-            if part in ['。', '！', '？']:
-                current += part
-                if current.strip():
-                    result.append(current.strip())
-                current = ""
-            else:
-                current += part
-        
-        # 残りがあれば追加
-        if current.strip():
-            result.append(current.strip())
-        
-        # それでも長い場合は、読点で分割
-        final_result = []
-        for sentence in result:
+        for sentence in sentences:
             if len(sentence) <= max_length:
-                final_result.append(sentence)
+                result.append(sentence)
             else:
                 # 読点で分割
-                parts = re.split(r'([、,])', sentence)
-                temp = ""
-                for part in parts:
-                    if len(temp + part) <= max_length:
-                        temp += part
+                sub_parts = re.split(r'(、|,)', sentence)
+                buffer = ""
+                for i in range(0, len(sub_parts)):
+                    part = sub_parts[i]
+                    if len(buffer + part) <= max_length:
+                        buffer += part
                     else:
-                        if temp.strip():
-                            final_result.append(temp.strip())
-                        temp = part
-                if temp.strip():
-                    final_result.append(temp.strip())
+                        if buffer.strip():
+                            result.append(buffer.strip())
+                        buffer = part
+                if buffer.strip():
+                    result.append(buffer.strip())
+        
+        # 短すぎる文を前の文と結合
+        final_result = []
+        for sentence in result:
+            if final_result and len(sentence) < min_length:
+                final_result[-1] += sentence
+            else:
+                final_result.append(sentence)
         
         return [s for s in final_result if s]
 
@@ -433,23 +436,31 @@ class POCController:
             if entry["text"] == text and entry["speaker"] == speaker_label:
                 if is_final:
                     await self._finalize_result(job, result_id)
-                    # 最終結果が出たら、長い文を分割して分析
+                    # 最終結果が出たら、長い文を分割して分析（全文を分析）
                     split_texts = self._split_long_text(text)
-                    for split_text in split_texts:
-                        asyncio.create_task(self.classify_realtime(job.job_id, split_text, speaker_label, entry["index"]))
+                    print(f"📝 元の文: {text}")
+                    print(f"✂️ 分割結果: {split_texts}")
+                    for i, split_text in enumerate(split_texts):
+                        # 各分割文に一意のindexを割り当て
+                        unique_index = entry["index"] * 1000 + i
+                        asyncio.create_task(self.classify_realtime(job.job_id, split_text, speaker_label, unique_index))
                 return
             entry["text"] = text
             entry["speaker"] = speaker_label
             entry["raw_speaker"] = raw_label
             await job.queue.put({"type": "transcript", "action": "update", "payload": self._public_payload(entry)})
         
-        # 最終結果が出たら、必ず分析を実行
+        # 最終結果が出たら、必ず分析を実行（全文を分析）
         if is_final:
             await self._finalize_result(job, result_id)
             # 長い文を分割してリアルタイム分析を開始
             split_texts = self._split_long_text(entry["text"])
-            for split_text in split_texts:
-                asyncio.create_task(self.classify_realtime(job.job_id, split_text, entry["speaker"], entry["index"]))
+            print(f"📝 元の文: {entry['text']}")
+            print(f"✂️ 分割結果: {split_texts}")
+            for i, split_text in enumerate(split_texts):
+                # 各分割文に一意のindexを割り当て（元のindex * 1000 + 分割番号）
+                unique_index = entry["index"] * 1000 + i
+                asyncio.create_task(self.classify_realtime(job.job_id, split_text, entry["speaker"], unique_index))
 
     async def _finalize_result(self, job: PocJob, result_id: str) -> None:
         entry = job.pending_results.pop(result_id, None)

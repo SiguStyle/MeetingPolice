@@ -31,8 +31,6 @@ body::before {
   z-index: 0;
 }
 
-
-
 /* ===== レイアウト ===== */
 .mp-session-layout {
   max-width: 960px;
@@ -70,7 +68,6 @@ body::before {
   gap: 0.3rem !important;
 }
 
-/* 画像が読み込めない場合のフォールバック */
 .mp-session-layout header h1::before {
   content: 'MEETING POLICE POC\ASATOMIN';
   font-family: 'Press Start 2P', 'Courier New', monospace !important;
@@ -153,21 +150,12 @@ body::before {
   margin-bottom: 1rem;
 }
 
-/* POC Satominのアップロードセクション */
 section.panel.poc-upload {
   background: rgba(10, 14, 39, 0.95) !important;
 }
 
 .poc-upload * {
   color: #00ffff !important;
-}
-
-.poc-upload h2 {
-  color: #00ffff !important;
-}
-
-.poc-upload .poc-form {
-  background: transparent !important;
 }
 
 /* ===== ボタン ===== */
@@ -187,7 +175,6 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.1em;
   font-family: 'Courier New', monospace;
-  image-rendering: pixelated;
 }
 
 button:hover {
@@ -212,13 +199,6 @@ input[type="text"] {
   border: 2px solid #00ffff !important;
 }
 
-.upload-field input {
-  background: rgba(255, 255, 255, 0.3) !important;
-  color: #00ffff !important;
-  border: 2px solid #00ffff !important;
-}
-
-/* ファイル選択ボタン */
 input[type="file"]::file-selector-button {
   background: rgba(255, 255, 255, 0.9) !important;
   color: #0a0e27 !important;
@@ -233,10 +213,13 @@ input[type="file"]::file-selector-button {
 
 input[type="file"]::file-selector-button:hover {
   background: rgba(255, 255, 255, 1) !important;
-  border-color: #ffffff !important;
-  color: #0a0e27 !important;
   box-shadow: 0 0 25px rgba(255, 255, 255, 0.9) !important;
   transform: scale(1.05);
+}
+
+input::placeholder {
+  color: rgba(0, 255, 255, 0.5) !important;
+  opacity: 1;
 }
 
 /* ===== テキストスタイル ===== */
@@ -256,10 +239,6 @@ span {
 
 strong {
   color: #00ff00 !important;
-}
-
-small {
-  color: #00ffff !important;
 }
 
 /* ===== ピル（バッジ） ===== */
@@ -294,6 +273,8 @@ small {
   border: 2px solid #00ffff !important;
   border-radius: 12px;
   padding: 0.5rem !important;
+  overflow: visible !important;
+  min-height: auto !important;
 }
 
 .transcript-item header {
@@ -307,18 +288,11 @@ small {
   font-size: 0.9em !important;
 }
 
-.transcript-item header strong {
+.transcript-item header strong,
+.transcript-item header .pill,
+.transcript-item header span:not(.pill) {
   white-space: nowrap !important;
   flex-shrink: 0 !important;
-}
-
-.transcript-item header .pill {
-  white-space: nowrap !important;
-  flex-shrink: 0 !important;
-}
-
-.transcript-item header span {
-  white-space: nowrap !important;
 }
 
 .transcript-item p {
@@ -326,9 +300,13 @@ small {
   margin: 0 !important;
   font-size: 0.9em !important;
   line-height: 1.4 !important;
+  white-space: normal !important;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+  max-height: none !important;
+  overflow: visible !important;
 }
 
-/* ドット絵風フォント */
 .transcript-item p,
 .transcript-item header,
 .transcript-item strong,
@@ -352,9 +330,6 @@ small {
   background: rgba(10, 14, 39, 0.9) !important;
   color: #00ffff !important;
   font-family: 'Courier New', 'Consolas', monospace !important;
-  image-rendering: pixelated !important;
-  -webkit-font-smoothing: none !important;
-  -moz-osx-font-smoothing: grayscale !important;
   white-space: pre-wrap;
   margin: 0;
   font-size: 0.9rem;
@@ -424,17 +399,19 @@ small {
   font-size: 1em !important;
 }
 
-/* ===== リザルト画面 ===== */
-.mp-session-layout div[style*="backgroundColor"] {
-  background-color: rgba(10, 14, 39, 0.9) !important;
+/* ===== 2列レイアウト ===== */
+.poc-columns {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
-div[style*="backgroundColor: #f5f5f5"],
-div[style*="backgroundColor: #f9f9f9"],
-div[style*="backgroundColor: #e8f5e9"],
-div[style*="backgroundColor: #fff3e0"] {
-  background-color: rgba(10, 14, 39, 0.9) !important;
-  color: #00ffff !important;
+.poc-left,
+.poc-right {
+  flex: 1 1 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
 /* ===== その他 ===== */
@@ -459,22 +436,4 @@ audio {
     transform: translateX(-50%) scale(1.05);
     opacity: 0.9;
   }
-}
-
-
-
-/*
- ===== 2列レイアウト ===== */
-.poc-columns {
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.poc-left,
-.poc-right {
-  flex: 1 1 320px;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
 }
