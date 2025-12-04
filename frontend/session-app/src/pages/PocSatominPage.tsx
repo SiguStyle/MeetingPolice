@@ -43,6 +43,10 @@ export function PocSatominPage() {
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [scheduledMinutes, setScheduledMinutes] = useState<number | null>(null);
   const [showWarning, setShowWarning] = useState<boolean>(false);
+  const [showPoliceWarning, setShowPoliceWarning] = useState<boolean>(false);
+  const [policeWarningShownAt, setPoliceWarningShownAt] = useState<number | null>(null);
+  const [lowAlignmentStartTime, setLowAlignmentStartTime] = useState<number | null>(null);
+  const policeWarningTimeoutRef = useRef<number | null>(null);
   const [speakerNames, setSpeakerNames] = useState<{ [key: string]: string }>({});
   const wsRef = useRef<WebSocket | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -356,15 +360,55 @@ export function PocSatominPage() {
       recentItems.reduce((sum, item) => sum + item.alignment, 0) / recentItems.length
     );
 
-    // 60%以下で画面に警告表示
-    if (avgAlignment <= 60) {
+    const now = Date.now();
+
+    // 30%以下の状態を追跡
+    if (avgAlignment <= 30) {
+      // 初めて30%以下になった時刻を記録
+      if (lowAlignmentStartTime === null) {
+        setLowAlignmentStartTime(now);
+      }
+
+      // 警察出動警告の表示判定
+      const shouldShowPolice =
+        // まだ一度も表示していない、または
+        policeWarningShownAt === null ||
+        // 前回表示から5分以上経過している
+        (now - policeWarningShownAt >= 5 * 60 * 1000);
+
+      if (shouldShowPolice && !showPoliceWarning) {
+        setShowPoliceWarning(true);
+        setPoliceWarningShownAt(now);
+        setShowWarning(false);
+
+        // 15秒後に自動で消す
+        if (policeWarningTimeoutRef.current) {
+          clearTimeout(policeWarningTimeoutRef.current);
+        }
+        policeWarningTimeoutRef.current = window.setTimeout(() => {
+          setShowPoliceWarning(false);
+        }, 15000);
+      } else if (!shouldShowPolice) {
+        // 5分経過していない場合は通常警告を表示
+        setShowWarning(true);
+        setShowPoliceWarning(false);
+      }
+    }
+    // 50%以下で通常警告
+    else if (avgAlignment <= 50) {
       setShowWarning(true);
-    } else {
+      setShowPoliceWarning(false);
+      setLowAlignmentStartTime(null); // 30%以下の状態をリセット
+    }
+    // 50%超えたら警告なし
+    else {
       setShowWarning(false);
+      setShowPoliceWarning(false);
+      setLowAlignmentStartTime(null); // 30%以下の状態をリセット
     }
 
-    // 60%以下で音声アラートを20秒ごとに流す
-    const shouldAlert = avgAlignment <= 60;
+    // 50%以下で音声アラートを1分ごとに流す
+    const shouldAlert = avgAlignment <= 50;
     const isAlertActive = alertIntervalRef.current !== null;
 
     if (shouldAlert && !isAlertActive) {
@@ -372,7 +416,7 @@ export function PocSatominPage() {
       playVoiceAlert('一致度が下がっています');
       alertIntervalRef.current = window.setInterval(() => {
         playVoiceAlert('一致度が下がっています');
-      }, 20000);
+      }, 60000);
     } else if (!shouldAlert && isAlertActive) {
       // アラートを停止（インターバルと音声合成の両方）
       clearInterval(alertIntervalRef.current);
@@ -389,6 +433,10 @@ export function PocSatominPage() {
       if (alertIntervalRef.current) {
         clearInterval(alertIntervalRef.current);
         alertIntervalRef.current = null;
+      }
+      if (policeWarningTimeoutRef.current) {
+        clearTimeout(policeWarningTimeoutRef.current);
+        policeWarningTimeoutRef.current = null;
       }
     };
   }, []);
@@ -437,20 +485,65 @@ export function PocSatominPage() {
         <div style={{
           position: 'fixed',
           top: '20px',
-          left: '50%',
-          transform: 'translateX(-50%)',
+          left: '0',
+          right: '0',
+          margin: '0 auto',
+          width: 'fit-content',
           zIndex: 9999,
           padding: '20px 40px',
-          backgroundColor: '#ff1744',
+          backgroundColor: '#ff9800',
           color: 'white',
           borderRadius: '12px',
           fontSize: '1.5em',
           fontWeight: 'bold',
-          boxShadow: '0 8px 24px rgba(255, 23, 68, 0.4)',
+          boxShadow: '0 8px 24px rgba(255, 152, 0, 0.4)',
           animation: 'pulse 1.5s ease-in-out infinite',
           border: '4px solid #fff'
         }}>
           ⚠️ 一致度が落ちています！ ⚠️
+        </div>
+      )}
+      {showPoliceWarning && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          left: '0',
+          right: '0',
+          margin: '0 auto',
+          width: 'fit-content',
+          zIndex: 9999,
+          padding: '30px 50px',
+          backgroundColor: '#ff1744',
+          color: 'white',
+          borderRadius: '16px',
+          fontSize: '2em',
+          fontWeight: 'bold',
+          boxShadow: '0 12px 32px rgba(255, 23, 68, 0.6)',
+          animation: 'pulse 1s ease-in-out infinite',
+          border: '6px solid #fff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '20px',
+          whiteSpace: 'nowrap'
+        }}>
+          <img
+            src="/police-icon.png.png"
+            alt="警察官"
+            style={{
+              width: '80px',
+              height: '80px'
+            }}
+          />
+          <span>🚨 警察出動！ 🚨</span>
+          <img
+            src="/police-icon.png.png"
+            alt="警察官"
+            style={{
+              width: '80px',
+              height: '80px'
+            }}
+          />
         </div>
       )}
       <div className="poc-columns">
